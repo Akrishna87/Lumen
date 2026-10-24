@@ -51,7 +51,8 @@ dump() {
   done
   [ -f "$OUT/$1.xml" ] || fail "couldn't read what's on screen ($1)"
 }
-shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
+# Android blanks screenshots of secure screens (like its PIN prompt); drop those empty files.
+shot() { adb exec-out screencap -p > "$OUT/$1.png"; [ -s "$OUT/$1.png" ] || rm -f "$OUT/$1.png"; }
 tap() { # tap <dump name> <text> [first|last]
   local xy
   xy=$(python3 "$HERE/find_text.py" "$OUT/$1.xml" "$2" "${3:-first}") || fail "couldn't find '$2' on screen"
