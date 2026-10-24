@@ -4,6 +4,8 @@ import android.view.LayoutInflater
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -57,6 +59,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -85,6 +92,7 @@ import io.github.akrishna87.lumen.Format
 import io.github.akrishna87.lumen.LibraryState
 import io.github.akrishna87.lumen.MediaItem
 import io.github.akrishna87.lumen.R
+import io.github.akrishna87.lumen.Thumbnails
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -106,6 +114,9 @@ fun Viewer(
     state: LibraryState,
     favorites: Set<Long>,
     actions: GalleryActions,
+    /** The photo on screen changed; the grid underneath scrolls to it. */
+    onCurrentChange: (Long) -> Unit,
+    /** The viewer has finished closing (after shrinking back into its thumbnail). */
     onClose: () -> Unit,
 ) {
     val apple = LocalApple.current
@@ -137,8 +148,6 @@ fun Viewer(
     var dismissY by remember { mutableFloatStateOf(0f) }
     var showInfo by remember { mutableStateOf(false) }
 
-    BackHandler { onClose() }
-
     // One player for the whole viewer; it follows whichever video is on screen.
     val player = remember { ExoPlayer.Builder(context).build() }
     var playing by remember { mutableStateOf(false) }
@@ -156,6 +165,7 @@ fun Viewer(
         }
     }
     LaunchedEffect(current.id) {
+        onCurrentChange(current.id)
         firstFrame = false
         if (current.isVideo) {
             player.setMediaItem(androidx.media3.common.MediaItem.fromUri(current.uri))
@@ -169,6 +179,56 @@ fun Viewer(
     }
     LaunchedEffect(muted) { player.volume = if (muted) 0f else 1f }
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { player.pause() }
+
+    // Opening grows the photo out of its thumbnail and closing shrinks it back, like Photos. While
+    // that runs, a copy of the thumbnail ("hero") moves between the two rectangles and the pager
+    // waits invisibly underneath (so the full photo is already loading).
+    var rootSize by remember { mutableStateOf(IntSize.Zero) }
+    var phase by remember { mutableStateOf(Phase.OPENING) }
+    val hero = remember { Animatable(0f) }
+    var heroItem by remember { mutableStateOf<MediaItem?>(null) }
+    var heroFrom by remember { mutableStateOf<Rect?>(null) }
+    var heroTo by remember { mutableStateOf(Rect.Zero) }
+    val heroSpec = tween<Float>(320, easing = FastOutSlowInEasing)
+
+    LaunchedEffect(rootSize.width > 0) {
+        if (rootSize.width == 0 || phase != Phase.OPENING) return@LaunchedEffect
+        val item = items[pager.currentPage.coerceIn(0, items.lastIndex)]
+        heroItem = item
+        heroFrom = ThumbBounds.visible(item.id, rootSize.height.toFloat())
+        heroTo = fittedRect(item, rootSize)
+        hero.animateTo(1f, heroSpec)
+        if (phase == Phase.OPENING) phase = Phase.OPEN // not if Back was pressed mid-way
+    }
+
+    fun close() {
+        if (phase == Phase.CLOSING) return
+        val item = items[pager.currentPage.coerceIn(0, items.lastIndex)]
+        // Start from where the photo is now, including any swipe-down in progress.
+        val rest = fittedRect(item, rootSize)
+        val shrink = 1f - min(0.3f, dismissY / 3000f)
+        val start = Rect(
+            rest.center.x - rest.width * shrink / 2, rest.center.y + dismissY - rest.height * shrink / 2,
+            rest.center.x + rest.width * shrink / 2, rest.center.y + dismissY + rest.height * shrink / 2,
+        )
+        showInfo = false
+        phase = Phase.CLOSING
+        heroItem = item
+        heroTo = start
+        heroFrom = null
+        scope.launch {
+            player.pause()
+            hero.snapTo(1f)
+            // Give the grid underneath a couple of frames to scroll this photo into view.
+            withFrameNanos { }
+            withFrameNanos { }
+            heroFrom = ThumbBounds.visible(item.id, rootSize.height.toFloat())
+            hero.animateTo(0f, heroSpec)
+            onClose()
+        }
+    }
+
+    BackHandler { close() }
 
     LaunchedEffect(actions.removed) {
         val gone = actions.removed - hidden
@@ -191,10 +251,17 @@ fun Viewer(
     val background by animateColorAsState(if (black) Color.Black else apple.background, label = "viewerBg")
     val closeDistance = with(density) { 110.dp.toPx() }
 
-    Box(Modifier.fillMaxSize().background(background.copy(alpha = 1f - dismissProgress))) {
+    val backdrop = when (phase) {
+        Phase.OPENING -> hero.value
+        Phase.OPEN -> 1f - dismissProgress
+        Phase.CLOSING -> hero.value * (1f - dismissProgress)
+    }
+    val settled = phase == Phase.OPEN
+
+    Box(Modifier.fillMaxSize().onSizeChanged { rootSize = it }.background(background.copy(alpha = backdrop))) {
         HorizontalPager(
             state = pager,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = if (settled) 1f else 0f },
             pageSpacing = 14.dp,
             beyondViewportPageCount = 1,
             userScrollEnabled = !zoomed && dismissY == 0f,
@@ -211,7 +278,7 @@ fun Viewer(
                 onZoomedChange = { if (active) zoomed = it },
                 onDismissDrag = { dismissY = it },
                 onDismissEnd = { distance ->
-                    if (distance > closeDistance) onClose()
+                    if (distance > closeDistance) close()
                     else scope.launch { animate(dismissY, 0f) { v, _ -> dismissY = v } }
                 },
             ) {
@@ -236,7 +303,21 @@ fun Viewer(
         }
 
         // Video play button in the middle while paused (as Photos shows), only when the bars are up.
-        if (current.isVideo && !playing && chrome && dismissY == 0f) {
+        val heroShot = heroItem
+        if (!settled && heroShot != null && rootSize.width > 0) {
+            val from = heroFrom
+            val rect = if (from != null) lerp(from, heroTo, hero.value) else heroTo
+            Box(
+                Modifier.offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
+                    .size(with(density) { rect.width.toDp() }, with(density) { rect.height.toDp() })
+                    // With no thumbnail on screen to grow from, the photo just fades.
+                    .graphicsLayer { alpha = if (from != null) 1f else hero.value },
+            ) {
+                ThumbImage(heroShot, Modifier.fillMaxSize())
+            }
+        }
+
+        if (current.isVideo && !playing && chrome && dismissY == 0f && settled) {
             Box(
                 Modifier.align(Alignment.Center).size(72.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.4f))
                     .tap { player.play() }.semantics { contentDescription = "Play" },
@@ -246,18 +327,18 @@ fun Viewer(
             }
         }
 
-        AnimatedVisibility(chrome && dismissY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
+        AnimatedVisibility(chrome && dismissY == 0f && settled, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
             NavBar(
                 title = Format.dayTitle(current.date),
                 subtitle = Format.time(current.dateTime),
-                onBack = onClose,
+                onBack = { close() },
                 trailing = {
                     if (current.isVideo) BarIcon(if (muted) AppIcons.Muted else AppIcons.Speaker, if (muted) "Unmute" else "Mute") { muted = !muted }
                 },
             )
         }
 
-        AnimatedVisibility(chrome && dismissY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
+        AnimatedVisibility(chrome && dismissY == 0f && settled, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
             Column(Modifier.fillMaxWidth().background(apple.bar)) {
                 if (current.isVideo) VideoControls(player, playing, current)
                 Filmstrip(items, pager.currentPage) { scope.launch { pager.scrollToPage(it) } }
@@ -426,6 +507,22 @@ private fun ZoomablePage(
 }
 
 private enum class Mode { UNDECIDED, TRANSFORM, DISMISS, PAGER }
+
+private enum class Phase { OPENING, OPEN, CLOSING }
+
+/** Where a photo sits on screen at 1×: as large as fits, centred. */
+private fun fittedRect(item: MediaItem, box: IntSize): Rect {
+    val bw = box.width.toFloat()
+    val bh = box.height.toFloat()
+    val (w, h) = when {
+        item.width > 0 && item.height > 0 -> item.width.toFloat() to item.height.toFloat()
+        else -> Thumbnails.cached(item)?.let { it.width.toFloat() to it.height.toFloat() } ?: (1f to 1f)
+    }
+    val ratio = min(bw / w, bh / h)
+    val fw = w * ratio
+    val fh = h * ratio
+    return Rect((bw - fw) / 2, (bh - fh) / 2, (bw + fw) / 2, (bh + fh) / 2)
+}
 
 @Composable
 private fun PhotoPage(item: MediaItem) {

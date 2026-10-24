@@ -199,6 +199,8 @@ fun AlbumScreen(
     actions: GalleryActions,
     onBack: () -> Unit,
     onOpen: (AlbumRef, MediaItem) -> Unit,
+    onPreview: (AlbumRef, MediaItem) -> Unit,
+    focusId: Long?,
 ) {
     val apple = LocalApple.current
     val items = remember(state, favorites, album) { album.items(state, favorites) }
@@ -234,6 +236,9 @@ fun AlbumScreen(
             onColumnsChange = { columns = it },
             selection = selection,
             onOpen = { onOpen(album, items[it]) },
+            onPreview = { onPreview(album, it) },
+            focusId = focusId,
+            leadingItems = 1,
             contentPadding = PaddingValues(bottom = 16.dp),
             header = {
                 item(key = "__title", span = { GridItemSpan(maxLineSpan) }) {

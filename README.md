@@ -29,9 +29,14 @@ and keeps your favourites.
   - **Years** and **Months**: big cards with a key photo, a strip of more photos
     and the count. Tap a year to see its months, and a month to jump to it in
     All Photos.
-- **Select**: tap **Select** (or long-press a photo) to pick several, then share,
-  favourite or delete them from the toolbar.
-- **The viewer**: swipe between photos, pinch or double-tap to zoom, and drag down
+- **Select**: tap **Select**, then tap photos, or drag your finger sideways across
+  the grid to pick a whole run of them (it scrolls when you reach the top or bottom).
+  Share, favourite or delete them from the toolbar.
+- **Press and hold** a photo for a larger preview over the blurred app, with a menu:
+  **Copy**, **Share**, **Favorite** and **Delete**. Tap the preview to open the photo.
+- **The viewer**: a photo grows out of its thumbnail when you open it, and shrinks back
+  into its place in the grid when you close it (the grid scrolls to the photo you
+  swiped to). Swipe between photos, pinch or double-tap to zoom, and drag down
   to close. Tap once to hide the bars; the background turns black, as in Photos.
   The title shows when it was taken ("Today", "Yesterday", "Monday", "March 3").
   A filmstrip of thumbnails sits above the toolbar: **Share**, **Favorite**,
@@ -85,7 +90,8 @@ instant. Requires Android 8.0 or newer.
 | `ui/AlbumsScreen.kt` | Albums, See All, an album's photos, Recently Deleted |
 | `ui/SearchScreen.kt` | Search and its suggestions |
 | `ui/Viewer.kt` | Full-screen viewer: zoom, swipe to close, video, filmstrip, Info |
-| `ui/PhotoGrid.kt` | The photo grid, thumbnails, pinch to resize, selection |
+| `ui/PhotoGrid.kt` | The photo grid, thumbnails, pinch to resize, selection, drag to select |
+| `ui/Preview.kt` | The press-and-hold preview and its menu |
 | `ui/Components.kt` | iOS-style controls |
 | `ui/Theme.kt` | iOS colours and text styles in Inter |
 | `ui/AppIcons.kt` | SF Symbols-style icons |
@@ -97,8 +103,9 @@ GitHub Actions builds it (`.github/workflows/lumen-apk.yml`) on every push:
 1. **build**: `./gradlew assembleRelease` (needs JDK 17 and the Android SDK).
 2. **smoke-test**: makes test photos (with EXIF camera details), screenshots, a
    panorama and a video, puts them on an Android 14 emulator, and checks the welcome
-   screen, the Library, Months and Years, selecting, the viewer (favourite, Info, a
-   video playing), Albums, Favorites, Search and dark mode. Screenshots are saved
+   screen, the Library, Months and Years, selecting (by tapping and by dragging
+   across a row), the press-and-hold preview, the viewer (favourite, Info, a video
+   playing, deleting), Albums, Favorites, Search and dark mode. Screenshots are saved
    with the build.
 3. **publish**: replaces the `lumen-latest` release with the new APK and the
    screenshots.

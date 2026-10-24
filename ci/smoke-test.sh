@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs inside the Android emulator job: installs the APK, puts test photos and a video on the
 # "phone", and checks the welcome screen, the Library (All Photos, Months, Years), the viewer
-# (favourite, info, video playback, deleting), Albums, Search and dark mode.
+# (favourite, info, video playback, deleting), press-and-hold previews, drag-selecting, Albums,
+# Search and dark mode.
 # Usage: smoke-test.sh <apk> <media dir> <output dir>
 set -euo pipefail
 
@@ -128,10 +129,32 @@ tap select "Photo, " last
 sleep 1
 dump select
 has select 'text="1 Photo Selected"' || fail "selecting a photo didn't say '1 Photo Selected'"
+# Drag sideways across a row to pick it all at once.
+ROW=$(python3 "$HERE/row_swipe.py" "$OUT/select.xml") || fail "couldn't find a row of photos to drag across"
+adb shell input swipe $ROW 800
+sleep 1
+dump select
 shot 05-select
+has select 'text="[2-9] \(Photos\|Items\) Selected"' || fail "dragging across a row didn't select its photos"
 tap select "Cancel"
 sleep 1
-echo "PASS: selecting photos"
+echo "PASS: selecting photos, by tapping and by dragging across them"
+
+echo "--- Press and hold"
+dump library
+XY=$(python3 "$HERE/find_text.py" "$OUT/library.xml" "Photo, " last) || fail "no photo to press"
+adb shell input swipe $XY $XY 900
+sleep 2
+dump preview
+shot 05b-preview
+has preview 'text="Copy"' || fail "pressing and holding a photo didn't show the menu"
+has preview 'text="Share"' || fail "the preview menu has no Share"
+has preview 'content-desc="Preview, Photo, ' || fail "pressing and holding didn't show a preview of the photo"
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+dump library
+has library 'text="Copy"' && fail "Back didn't close the preview"
+echo "PASS: press and hold shows a preview with a menu"
 
 echo "--- The viewer"
 dump library

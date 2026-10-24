@@ -79,6 +79,8 @@ fun LibraryScreen(
     gridState: LazyGridState,
     selection: Selection,
     onOpen: (MediaItem) -> Unit,
+    onPreview: (MediaItem) -> Unit,
+    focusId: Long?,
 ) {
     val apple = LocalApple.current
     val items = state.items
@@ -112,6 +114,8 @@ fun LibraryScreen(
                     onColumnsChange = { ui.columns = it },
                     selection = selection,
                     onOpen = { onOpen(items[it]) },
+                    onPreview = onPreview,
+                    focusId = focusId,
                     contentPadding = PaddingValues(top = top + 52.dp, bottom = 76.dp),
                     footer = { countFooter(items) },
                 )

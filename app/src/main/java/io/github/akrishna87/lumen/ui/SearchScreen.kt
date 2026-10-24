@@ -45,7 +45,9 @@ fun SearchScreen(
     favorites: Set<Long>,
     onAlbum: (AlbumRef) -> Unit,
     onOpen: (AlbumRef, MediaItem) -> Unit,
+    onPreview: (AlbumRef, MediaItem) -> Unit,
 ) {
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val apple = LocalApple.current
     var query by rememberSaveable { mutableStateOf("") }
     var focused by remember { mutableStateOf(false) }
@@ -118,6 +120,10 @@ fun SearchScreen(
                                 selecting = false,
                                 selected = false,
                                 onClick = { onOpen(resultsRef, item) },
+                                onLongClick = {
+                                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                    onPreview(resultsRef, item)
+                                },
                                 modifier = Modifier.weight(1f),
                             )
                         }

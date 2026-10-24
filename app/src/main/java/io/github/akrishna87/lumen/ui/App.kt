@@ -13,7 +13,6 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -41,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +49,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -158,6 +159,13 @@ class GalleryActions(
 
     fun toggleFavorite(item: MediaItem) = vm.toggleFavorite(item)
 
+    /** Puts the photo on the clipboard, for pasting into a chat or a note. */
+    fun copy(item: MediaItem) {
+        val activity = activity ?: return
+        val clipboard = activity.getSystemService(android.content.ClipboardManager::class.java) ?: return
+        runCatching { clipboard.setPrimaryClip(ClipData.newUri(activity.contentResolver, item.fileName, item.uri)) }
+    }
+
     fun setFavorite(items: List<MediaItem>, favorite: Boolean) = vm.setFavorite(items, favorite)
 
     fun delete(items: List<MediaItem>) {
@@ -235,13 +243,21 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val stacks = remember { List(3) { mutableStateListOf<Route>() } }
     var viewer by remember { mutableStateOf<ViewerTarget?>(null) }
+    // The photo open in the viewer, which the grid underneath keeps in view.
+    var focusId by remember { mutableStateOf<Long?>(null) }
+    // Press-and-hold preview: the photo and the album it was pressed in.
+    var preview by remember { mutableStateOf<Pair<AlbumRef, MediaItem>?>(null) }
     val selection = remember { Selection() }
 
     // The Library's own state lives here so it's kept while browsing albums or the viewer.
     val library = remember { LibraryUi() }
     val libraryGrid = rememberLazyGridState()
 
-    val open: (AlbumRef, MediaItem) -> Unit = { album, item -> viewer = ViewerTarget(album, item.id) }
+    val open: (AlbumRef, MediaItem) -> Unit = { album, item ->
+        focusId = item.id
+        viewer = ViewerTarget(album, item.id)
+    }
+    val showPreview: (AlbumRef, MediaItem) -> Unit = { album, item -> preview = album to item }
     val push: (Route) -> Unit = { route ->
         selection.end()
         stacks[tab].add(route)
@@ -252,7 +268,8 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
     BackHandler(enabled = tab != 0 && stacks[tab].isEmpty() && viewer == null && !selection.active) { tab = 0 }
 
     Box(Modifier.fillMaxSize().background(apple.background)) {
-        Column(Modifier.fillMaxSize()) {
+        // Behind a preview the app blurs (Android 12+; older versions just dim, below).
+        Column(Modifier.fillMaxSize().blur(if (preview != null) 18.dp else 0.dp)) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 val route = stacks[tab].lastOrNull()
                 val depth = stacks[tab].size
@@ -278,6 +295,8 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                             actions = actions,
                             onBack = { stacks[t].removeAt(stacks[t].lastIndex) },
                             onOpen = open,
+                            onPreview = showPreview,
+                            focusId = focusId,
                         )
                         Route.AllAlbums -> AllAlbumsScreen(
                             state = state,
@@ -292,6 +311,8 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 gridState = libraryGrid,
                                 selection = selection,
                                 onOpen = { open(AlbumRef(AlbumRef.RECENTS, "Library"), it) },
+                                onPreview = { showPreview(AlbumRef(AlbumRef.RECENTS, "Library"), it) },
+                                focusId = focusId,
                             )
                             1 -> AlbumsScreen(
                                 state = state,
@@ -306,6 +327,7 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 favorites = favorites,
                                 onAlbum = { push(Route.AlbumDetail(it, "Search")) },
                                 onOpen = open,
+                                onPreview = showPreview,
                             )
                         }
                     }
@@ -326,20 +348,34 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
             }
         }
 
-        AnimatedVisibility(viewer != null, enter = fadeIn(tween(180)), exit = fadeOut(tween(180))) {
-            val target = viewer
-            if (target != null) {
+        viewer?.let { target ->
+            key(target) {
                 Viewer(
                     target = target,
                     state = state,
                     favorites = favorites,
                     actions = actions,
+                    onCurrentChange = { focusId = it },
                     onClose = {
                         viewer = null
+                        focusId = null
                         actions.forgetRemoved()
                     },
                 )
             }
+        }
+
+        preview?.let { (album, item) ->
+            PreviewOverlay(
+                item = item,
+                favorite = item.id in favorites,
+                actions = actions,
+                onOpen = {
+                    preview = null
+                    open(album, item)
+                },
+                onDismiss = { preview = null },
+            )
         }
 
         actions.pendingDelete?.let { items ->
