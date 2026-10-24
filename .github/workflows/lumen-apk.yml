@@ -100,9 +100,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release delete lumen-latest --cleanup-tag --yes || true
-          gh release create lumen-latest out/Lumen.apk out/screens/*.png \
-            --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "Lumen gallery for Android (build ${{ github.run_number }})" \
-            --notes "Download **Lumen.apk** on your Android phone, open it, and allow installing from your browser when asked. Each new build installs as an update over the last one. The PNG files are screenshots from the automatic emulator test of this build."
+          find out/screens -name '*.png' -size 0 -delete # a blank screenshot can't be uploaded
+          title="Lumen gallery for Android (build ${{ github.run_number }})"
+          notes="Download **Lumen.apk** on your Android phone, open it, and allow installing from your browser when asked. Each new build installs as an update over the last one. The PNG files are screenshots from the automatic emulator test of this build."
+          # Update the release in place (never delete it), so the download link keeps working even
+          # if a step fails part-way.
+          if gh release view lumen-latest > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/lumen-latest" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+            gh release upload lumen-latest out/Lumen.apk out/screens/*.png --clobber
+            gh release edit lumen-latest --title "$title" --notes "$notes"
+          else
+            gh release create lumen-latest out/Lumen.apk out/screens/*.png --target "$GITHUB_SHA" --prerelease --title "$title" --notes "$notes"
+          fi

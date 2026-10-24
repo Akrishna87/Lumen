@@ -9,10 +9,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +28,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,12 +41,19 @@ import androidx.compose.runtime.Stable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -54,6 +65,14 @@ import androidx.compose.ui.unit.dp
 import io.github.akrishna87.lumen.Format
 import io.github.akrishna87.lumen.MediaItem
 import io.github.akrishna87.lumen.Thumbnails
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 /** Which items are picked while "Select" is on. */
 @Stable
@@ -70,6 +89,34 @@ class Selection {
     fun end() { active = false; ids.clear() }
 
     fun items(all: List<MediaItem>): List<MediaItem> = ids.toSet().let { picked -> all.filter { it.id in picked } }
+
+    fun replace(picked: Set<Long>) {
+        ids.clear()
+        ids.addAll(picked)
+    }
+}
+
+/**
+ * Where each thumbnail is on screen, so the viewer can grow a photo out of its thumbnail and shrink
+ * it back. A plain map, not Compose state: it changes on every scroll frame and nothing should
+ * redraw because of it.
+ */
+object ThumbBounds {
+    private class Entry(val owner: Any, val rect: Rect)
+
+    private val map = HashMap<Long, Entry>()
+
+    fun put(id: Long, owner: Any, rect: Rect) {
+        map[id] = Entry(owner, rect)
+    }
+
+    fun remove(id: Long, owner: Any) {
+        if (map[id]?.owner === owner) map.remove(id)
+    }
+
+    /** The thumbnail's rectangle in the window, if it's on screen right now. */
+    fun visible(id: Long, windowHeight: Float): Rect? =
+        map[id]?.rect?.takeIf { it.width > 0f && it.bottom > 0f && it.top < windowHeight }
 }
 
 /** The grid sizes Photos steps through when you pinch: 3 across by default. */
@@ -93,11 +140,29 @@ fun MediaGrid(
     header: (LazyGridScope.() -> Unit)? = null,
     footer: (LazyGridScope.() -> Unit)? = null,
     badge: ((MediaItem) -> String)? = null,
+    onPreview: ((MediaItem) -> Unit)? = null,
+    /** The photo open in the viewer: the grid scrolls to it, so closing can shrink it back into place. */
+    focusId: Long? = null,
+    /** Items [header] adds before the photos, so scrolling to one lands on the right row. */
+    leadingItems: Int = 0,
 ) {
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(focusId) {
+        val id = focusId ?: return@LaunchedEffect
+        val info = state.layoutInfo
+        val cell = info.visibleItemsInfo.firstOrNull { it.key == id }
+        val inView = cell != null && cell.offset.y >= info.viewportStartOffset && cell.offset.y + cell.size.height <= info.viewportEndOffset
+        if (!inView) {
+            val index = items.indexOfFirst { it.id == id }
+            if (index >= 0) state.scrollToItem(index + leadingItems)
+        }
+    }
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
         state = state,
-        modifier = modifier.fillMaxSize().pinchToResize(columns, onColumnsChange),
+        modifier = modifier.fillMaxSize().pinchToResize(columns, onColumnsChange)
+            .dragToSelect(selection.active, state, items, selection, scope),
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(1.5.dp),
         verticalArrangement = Arrangement.spacedBy(1.5.dp),
@@ -112,10 +177,13 @@ fun MediaGrid(
                 small = columns >= 5,
                 badge = badge?.invoke(item),
                 onClick = { if (selection.active) selection.toggle(item) else onOpen(index) },
-                onLongClick = {
-                    if (!selection.active) selection.start()
-                    selection.toggle(item)
-                },
+                // Press and hold shows a preview with a menu, as in Photos (not while selecting).
+                onLongClick = if (onPreview != null && !selection.active) {
+                    {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onPreview(item)
+                    }
+                } else null,
             )
         }
         footer?.invoke(this)
@@ -160,6 +228,87 @@ private fun Modifier.pinchToResize(columns: Int, onChange: (Int) -> Unit): Modif
     }
 }
 
+/**
+ * While selecting, a sideways drag picks (or un-picks) every photo from where it started to where
+ * the finger is, scrolling when the finger nears the top or bottom. Up-and-down drags still scroll.
+ */
+private fun Modifier.dragToSelect(
+    enabled: Boolean,
+    grid: LazyGridState,
+    items: List<MediaItem>,
+    selection: Selection,
+    scope: CoroutineScope,
+): Modifier = if (!enabled) this else pointerInput(items) {
+    val slop = viewConfiguration.touchSlop
+    val edge = 72.dp.toPx()
+    val maxSpeed = 22.dp.toPx()
+    val indexOf = HashMap<Long, Int>(items.size * 2).apply { items.forEachIndexed { i, item -> put(item.id, i) } }
+
+    /** The photo under a point in the grid. Cell offsets count from the start of the content, so add the top padding back. */
+    fun hit(p: Offset): Int? {
+        val info = grid.layoutInfo
+        val y = p.y + info.viewportStartOffset
+        val cell = info.visibleItemsInfo.firstOrNull {
+            it.key is Long && p.x >= it.offset.x && p.x < it.offset.x + it.size.width && y >= it.offset.y && y < it.offset.y + it.size.height
+        } ?: return null
+        return indexOf[cell.key as Long]
+    }
+
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        var travel = Offset.Zero
+        var anchor = -1
+        var adding = true
+        var before: Set<Long> = emptySet()
+        var finger = down.position
+        var speed = 0f
+        var scroller: Job? = null
+
+        fun pick() {
+            val at = hit(finger) ?: return
+            val range = items.subList(min(anchor, at), max(anchor, at) + 1).mapTo(HashSet()) { it.id }
+            selection.replace(if (adding) before + range else before - range)
+        }
+
+        try {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (event.changes.count { it.pressed } >= 2) break // a pinch
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                if (anchor < 0) {
+                    travel += change.positionChange()
+                    if (travel.getDistance() < slop) continue
+                    if (abs(travel.x) <= abs(travel.y)) break // scrolling
+                    anchor = hit(down.position) ?: break
+                    before = selection.ids.toSet()
+                    adding = items[anchor].id !in before
+                }
+                finger = change.position
+                pick()
+                event.changes.forEach { it.consume() }
+                speed = when {
+                    finger.y < edge -> -maxSpeed * (1f - finger.y / edge).coerceIn(0f, 1f)
+                    finger.y > size.height - edge -> maxSpeed * ((finger.y - (size.height - edge)) / edge).coerceIn(0f, 1f)
+                    else -> 0f
+                }
+                if (speed != 0f && scroller == null) {
+                    scroller = scope.launch {
+                        while (isActive && speed != 0f) {
+                            grid.scrollBy(speed)
+                            pick() // the finger is still, but the photos under it have moved
+                            delay(16)
+                        }
+                        scroller = null
+                    }
+                }
+            }
+        } finally {
+            scroller?.cancel()
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Thumb(
@@ -174,8 +323,11 @@ fun Thumb(
     onLongClick: (() -> Unit)? = null,
 ) {
     val apple = LocalApple.current
+    val owner = remember { Any() }
+    DisposableEffect(item.id) { onDispose { ThumbBounds.remove(item.id, owner) } }
     Box(
         modifier.aspectRatio(1f).background(apple.placeholder)
+            .onGloballyPositioned { ThumbBounds.put(item.id, owner, it.boundsInWindow()) }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .semantics { contentDescription = item.description; if (selecting) this.selected = selected },
     ) {

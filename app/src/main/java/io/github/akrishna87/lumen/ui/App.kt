@@ -13,7 +13,6 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -39,8 +38,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +50,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -60,11 +62,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.shape.CircleShape
 import io.github.akrishna87.lumen.Access
 import io.github.akrishna87.lumen.Format
 import io.github.akrishna87.lumen.GalleryViewModel
 import io.github.akrishna87.lumen.LibraryState
 import io.github.akrishna87.lumen.MediaItem
+import io.github.akrishna87.lumen.HiddenLock
+import io.github.akrishna87.lumen.UserAlbum
+import androidx.fragment.app.FragmentActivity
 
 /** An album-like list of items: a folder, Favorites, a media type, or Recently Deleted. */
 data class AlbumRef(val key: String, val title: String) {
@@ -81,10 +89,20 @@ data class AlbumRef(val key: String, val title: String) {
             state.items.filter { it.date.year == y.toInt() && it.date.monthValue == m.toInt() }
         }
         key.startsWith(SEARCH) -> searchWords(key.removePrefix(SEARCH)).let { words -> state.items.filter { it.matches(words) } }
+        key == HIDDEN -> state.hidden
+        key.startsWith(USER) -> state.userAlbums.firstOrNull { it.album.id == userAlbumId }?.items.orEmpty()
         else -> emptyList()
     }
 
     val isTrash: Boolean get() = key == TRASH
+    val isHidden: Boolean get() = key == HIDDEN
+
+    /** Set for the person's own albums. */
+    val userAlbumId: String? get() = if (key.startsWith(USER)) key.removePrefix(USER) else null
+
+    /** The title to show now: an album the person renamed shows its new name. */
+    fun currentTitle(state: LibraryState): String =
+        userAlbumId?.let { id -> state.userAlbums.firstOrNull { it.album.id == id }?.album?.name } ?: title
 
     companion object {
         const val RECENTS = "recents"
@@ -97,10 +115,13 @@ data class AlbumRef(val key: String, val title: String) {
         const val FOLDER = "folder:"
         const val MONTH = "month:"
         const val SEARCH = "search:"
+        const val HIDDEN = "hidden"
+        const val USER = "user:"
 
         fun folder(folder: String, name: String) = AlbumRef(FOLDER + folder, name)
         fun month(year: Int, month: Int, title: String) = AlbumRef("$MONTH$year-$month", title)
         fun search(query: String) = AlbumRef(SEARCH + query, "Search")
+        fun user(id: String, name: String) = AlbumRef(USER + id, name)
 
         fun searchWords(query: String): List<String> = query.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
     }
@@ -113,6 +134,10 @@ sealed interface Route {
 
 /** What the full-screen viewer is showing. */
 data class ViewerTarget(val album: AlbumRef, val startId: Long)
+
+data class SheetRequest(val message: String?, val actions: List<SheetAction>)
+
+data class NameRequest(val title: String, val message: String, val initial: String, val onSave: (String) -> Unit)
 
 /** Things any screen can do with photos: share, favourite, delete. */
 @Stable
@@ -131,6 +156,21 @@ class GalleryActions(
      * animation) rather than waiting for the library to reload.
      */
     var removed by mutableStateOf(emptySet<Long>())
+
+    /**
+     * Set while Android shows something over Lumen on its behalf (the share sheet, a confirmation,
+     * the unlock prompt), so the Hidden album doesn't re-lock just because of that.
+     */
+    var leavingApp = false
+
+    /** An action sheet to show (the ••• menus, album options, confirmations). */
+    var sheet by mutableStateOf<SheetRequest?>(null)
+
+    /** Photos waiting for an album to be picked in the Add to Album sheet. */
+    var picking by mutableStateOf<List<MediaItem>?>(null)
+
+    /** The New Album / Rename Album dialog. */
+    var naming by mutableStateOf<NameRequest?>(null)
 
     /** What the confirmation on screen is for, so its result can be acted on. */
     private var waiting: List<MediaItem> = emptyList()
@@ -153,10 +193,68 @@ class GalleryActions(
         send.type = type
         send.clipData = ClipData.newUri(activity.contentResolver, "Photos", uris[0]).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } }
         send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        leavingApp = true
         activity.startActivity(Intent.createChooser(send, null))
     }
 
     fun toggleFavorite(item: MediaItem) = vm.toggleFavorite(item)
+
+    fun setHidden(items: List<MediaItem>, hidden: Boolean) {
+        vm.setHidden(items, hidden)
+        removed = removed + items.map { it.id } // the viewer moves on to the next photo
+    }
+
+    fun addToAlbum(albumId: String, items: List<MediaItem>) = vm.addToAlbum(albumId, items)
+
+    fun removeFromAlbum(albumId: String, items: List<MediaItem>) {
+        vm.removeFromAlbum(albumId, items)
+        removed = removed + items.map { it.id }
+    }
+
+    /** Asks for a name, makes the album, then (optionally) does something with it. */
+    fun newAlbum(then: ((UserAlbum) -> Unit)? = null) {
+        naming = NameRequest("New Album", "Enter a name for this album.", "") { name -> vm.createAlbum(name).also { then?.invoke(it) } }
+    }
+
+    /** The ••• menu for some photos: add to an album, hide or unhide, remove from this album. */
+    fun more(items: List<MediaItem>, album: AlbumRef?, after: () -> Unit = {}) {
+        if (items.isEmpty()) return
+        val userAlbum = album?.userAlbumId
+        sheet = SheetRequest(
+            message = null,
+            actions = listOfNotNull(
+                SheetAction("Add to Album") { picking = items; after() },
+                userAlbum?.let { id -> SheetAction("Remove from Album") { removeFromAlbum(id, items); after() } },
+                if (album?.isHidden == true) SheetAction("Unhide") { setHidden(items, false); after() }
+                else SheetAction("Hide") { setHidden(items, true); after() },
+            ),
+        )
+    }
+
+    /** The ••• menu on one of the person's albums. */
+    fun albumOptions(id: String, name: String) {
+        sheet = SheetRequest(
+            message = null,
+            actions = listOf(
+                SheetAction("Rename Album") {
+                    naming = NameRequest("Rename Album", "Enter a new name for this album.", name) { vm.renameAlbum(id, it) }
+                },
+                SheetAction("Delete Album", destructive = true) {
+                    sheet = SheetRequest(
+                        message = "Delete the album \u201C$name\u201D? The photos in it won't be deleted.",
+                        actions = listOf(SheetAction("Delete Album", destructive = true) { vm.deleteAlbum(id) }),
+                    )
+                },
+            ),
+        )
+    }
+
+    /** Puts the photo on the clipboard, for pasting into a chat or a note. */
+    fun copy(item: MediaItem) {
+        val activity = activity ?: return
+        val clipboard = activity.getSystemService(android.content.ClipboardManager::class.java) ?: return
+        runCatching { clipboard.setPrimaryClip(ClipData.newUri(activity.contentResolver, item.fileName, item.uri)) }
+    }
 
     fun setFavorite(items: List<MediaItem>, favorite: Boolean) = vm.setFavorite(items, favorite)
 
@@ -178,6 +276,7 @@ class GalleryActions(
 
     /** Called with the answer to Android's confirmation. */
     fun onResult(allowed: Boolean) {
+        leavingApp = false
         val items = waiting
         waiting = emptyList()
         if (!allowed || items.isEmpty()) return
@@ -204,6 +303,7 @@ class GalleryActions(
         if (sender == null) return
         waiting = items
         retryDelete = retry
+        leavingApp = true
         launcher.launch(IntentSenderRequest.Builder(sender).build())
     }
 }
@@ -225,7 +325,8 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
         return
     }
 
-    val activity = LocalContext.current as? Activity
+    val context = LocalContext.current
+    val activity = context as? Activity
     val actions = remember(vm, activity) { GalleryActions(vm, activity) }
     actions.launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         actions.onResult(result.resultCode == Activity.RESULT_OK)
@@ -235,16 +336,67 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val stacks = remember { List(3) { mutableStateListOf<Route>() } }
     var viewer by remember { mutableStateOf<ViewerTarget?>(null) }
+    // The photo open in the viewer, which the grid underneath keeps in view.
+    var focusId by remember { mutableStateOf<Long?>(null) }
+    // Press-and-hold preview: the photo and the album it was pressed in.
+    var preview by remember { mutableStateOf<Pair<AlbumRef, MediaItem>?>(null) }
+    // An edited copy waiting to appear in the library, so the viewer can switch to it.
+    var editedCopy by remember { mutableStateOf<Long?>(null) }
+    var note by remember { mutableStateOf<String?>(null) }
     val selection = remember { Selection() }
 
     // The Library's own state lives here so it's kept while browsing albums or the viewer.
     val library = remember { LibraryUi() }
     val libraryGrid = rememberLazyGridState()
 
-    val open: (AlbumRef, MediaItem) -> Unit = { album, item -> viewer = ViewerTarget(album, item.id) }
+    val open: (AlbumRef, MediaItem) -> Unit = { album, item ->
+        // Forget photos marked as removed outside a viewer (say, unhidden from Select mode), or
+        // this viewer would skip them.
+        actions.forgetRemoved()
+        focusId = item.id
+        viewer = ViewerTarget(album, item.id)
+    }
+    val showPreview: (AlbumRef, MediaItem) -> Unit = { album, item -> preview = album to item }
     val push: (Route) -> Unit = { route ->
         selection.end()
         stacks[tab].add(route)
+    }
+
+    // The Hidden album opens after the fingerprint, face or screen lock, and locks again when you
+    // leave it or Lumen goes to the background.
+    var hiddenUnlocked by remember { mutableStateOf(false) }
+    val showingHidden = stacks.any { stack -> stack.any { it is Route.AlbumDetail && it.album.isHidden } } ||
+        viewer?.album?.isHidden == true || preview?.first?.isHidden == true
+    LaunchedEffect(showingHidden) { if (!showingHidden) hiddenUnlocked = false }
+    fun lockHidden() {
+        // Only a selection inside Hidden ends; one in the Library survives a trip to the home screen.
+        if (selection.active && (stacks[tab].lastOrNull() as? Route.AlbumDetail)?.album?.isHidden == true) selection.end()
+        hiddenUnlocked = false
+        stacks.forEach { stack -> stack.removeAll { it is Route.AlbumDetail && it.album.isHidden } }
+        if (viewer?.album?.isHidden == true) {
+            viewer = null
+            focusId = null
+        }
+        if (preview?.first?.isHidden == true) preview = null
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (!actions.leavingApp) lockHidden() }
+    // Some of Android's screens (the unlock prompt on Android 11+, delete confirmations) don't stop
+    // Lumen at all, so clear the flag on resume and when they answer, not only on start.
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { actions.leavingApp = false }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { actions.leavingApp = false }
+    val openHidden: () -> Unit = {
+        val route = Route.AlbumDetail(AlbumRef(AlbumRef.HIDDEN, "Hidden"), "Albums")
+        val fragmentActivity = activity as? FragmentActivity
+        if (hiddenUnlocked || !HiddenLock.isSecure(context)) {
+            hiddenUnlocked = true
+            push(route)
+        } else if (fragmentActivity != null) {
+            actions.leavingApp = true // the PIN screen (Android 10 and older) stops Lumen
+            HiddenLock.unlock(fragmentActivity, onDone = { actions.leavingApp = false }) {
+                hiddenUnlocked = true
+                push(route)
+            }
+        }
     }
 
     BackHandler(enabled = selection.active && viewer == null) { selection.end() }
@@ -252,7 +404,8 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
     BackHandler(enabled = tab != 0 && stacks[tab].isEmpty() && viewer == null && !selection.active) { tab = 0 }
 
     Box(Modifier.fillMaxSize().background(apple.background)) {
-        Column(Modifier.fillMaxSize()) {
+        // Behind a preview the app blurs (Android 12+; older versions just dim, below).
+        Column(Modifier.fillMaxSize().blur(if (preview != null) 18.dp else 0.dp)) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 val route = stacks[tab].lastOrNull()
                 val depth = stacks[tab].size
@@ -278,6 +431,8 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                             actions = actions,
                             onBack = { stacks[t].removeAt(stacks[t].lastIndex) },
                             onOpen = open,
+                            onPreview = showPreview,
+                            focusId = focusId,
                         )
                         Route.AllAlbums -> AllAlbumsScreen(
                             state = state,
@@ -292,6 +447,8 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 gridState = libraryGrid,
                                 selection = selection,
                                 onOpen = { open(AlbumRef(AlbumRef.RECENTS, "Library"), it) },
+                                onPreview = { showPreview(AlbumRef(AlbumRef.RECENTS, "Library"), it) },
+                                focusId = focusId,
                             )
                             1 -> AlbumsScreen(
                                 state = state,
@@ -300,19 +457,22 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 onManageAccess = requestAccess,
                                 onAlbum = { push(Route.AlbumDetail(it, "Albums")) },
                                 onSeeAll = { push(Route.AllAlbums) },
+                                onNewAlbum = { actions.newAlbum() },
+                                onHidden = openHidden,
                             )
                             else -> SearchScreen(
                                 state = state,
                                 favorites = favorites,
                                 onAlbum = { push(Route.AlbumDetail(it, "Search")) },
                                 onOpen = open,
+                                onPreview = showPreview,
                             )
                         }
                     }
                 }
             }
             if (selection.active) {
-                SelectionToolbar(state, favorites, selection, actions, trash = (stacks[tab].lastOrNull() as? Route.AlbumDetail)?.album?.isTrash == true)
+                SelectionToolbar(state, favorites, selection, actions, album = (stacks[tab].lastOrNull() as? Route.AlbumDetail)?.album)
             } else {
                 TabBar(
                     tabs = listOf(TabItem("Library", AppIcons.Library), TabItem("Albums", AppIcons.Albums), TabItem("Search", AppIcons.Search)),
@@ -326,20 +486,82 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
             }
         }
 
-        AnimatedVisibility(viewer != null, enter = fadeIn(tween(180)), exit = fadeOut(tween(180))) {
-            val target = viewer
-            if (target != null) {
+        viewer?.let { target ->
+            key(target) {
                 Viewer(
                     target = target,
                     state = state,
                     favorites = favorites,
                     actions = actions,
+                    onCurrentChange = { focusId = it },
+                    onEdited = { id ->
+                        vm.refresh()
+                        editedCopy = id
+                        note = if (id != null) "Saved as a copy" else "Couldn\u2019t save the edited photo"
+                    },
                     onClose = {
                         viewer = null
+                        focusId = null
                         actions.forgetRemoved()
                     },
                 )
             }
+        }
+
+        // Open the copy once the library has it; if it's slow to appear, stay put (the note says it was saved).
+        LaunchedEffect(editedCopy, state) {
+            val id = editedCopy ?: return@LaunchedEffect
+            if (state.items.any { it.id == id }) {
+                editedCopy = null
+                focusId = id
+                viewer = ViewerTarget(AlbumRef(AlbumRef.RECENTS, "Library"), id)
+            }
+        }
+        LaunchedEffect(editedCopy) {
+            delay(5_000)
+            editedCopy = null
+        }
+        note?.let { text ->
+            LaunchedEffect(text) {
+                delay(2_500)
+                note = null
+            }
+            Text(
+                text,
+                style = AppleType.subheadline.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White,
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 52.dp)
+                    .clip(CircleShape).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+
+        preview?.let { (album, item) ->
+            PreviewOverlay(
+                item = item,
+                album = album,
+                favorite = item.id in favorites,
+                actions = actions,
+                onOpen = {
+                    preview = null
+                    open(album, item)
+                },
+                onDismiss = { preview = null },
+            )
+        }
+
+        actions.sheet?.let { request ->
+            ActionSheet(message = request.message, actions = request.actions, onDismiss = { actions.sheet = null })
+        }
+        actions.picking?.let { items ->
+            AlbumPicker(
+                albums = state.userAlbums,
+                onPick = { id -> actions.addToAlbum(id, items) },
+                onNewAlbum = { actions.newAlbum { album -> actions.addToAlbum(album.id, items) } },
+                onDismiss = { actions.picking = null },
+            )
+        }
+        actions.naming?.let { request ->
+            NameDialog(request, onDismiss = { actions.naming = null })
         }
 
         actions.pendingDelete?.let { items ->
@@ -363,9 +585,11 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
 
 /** Replaces the tab bar while selecting: Share · "3 Photos Selected" · Favorite · Delete. */
 @Composable
-private fun SelectionToolbar(state: LibraryState, favorites: Set<Long>, selection: Selection, actions: GalleryActions, trash: Boolean) {
+private fun SelectionToolbar(state: LibraryState, favorites: Set<Long>, selection: Selection, actions: GalleryActions, album: AlbumRef?) {
     val apple = LocalApple.current
-    val picked = selection.items(if (trash) state.trash else state.items)
+    val trash = album?.isTrash == true
+    // Pick from the album on screen: Hidden's photos (for one) aren't in the Library's list.
+    val picked = selection.items(album?.items(state, favorites) ?: state.items)
     Column(Modifier.fillMaxWidth().background(apple.bar)) {
         Hairline()
         Row(Modifier.fillMaxWidth().navigationBarsPadding().height(49.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -380,6 +604,9 @@ private fun SelectionToolbar(state: LibraryState, favorites: Set<Long>, selectio
                 BarIcon(if (allFavorite) AppIcons.HeartFill else AppIcons.Heart, if (allFavorite) "Unfavorite" else "Favorite", enabled = picked.isNotEmpty()) {
                     actions.setFavorite(picked, !allFavorite)
                     selection.end()
+                }
+                BarIcon(AppIcons.Ellipsis, "More", enabled = picked.isNotEmpty()) {
+                    actions.more(picked, album) { selection.end() }
                 }
                 BarIcon(AppIcons.Trash, "Delete", enabled = picked.isNotEmpty()) {
                     actions.delete(picked)

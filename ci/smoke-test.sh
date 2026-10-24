@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs inside the Android emulator job: installs the APK, puts test photos and a video on the
 # "phone", and checks the welcome screen, the Library (All Photos, Months, Years), the viewer
-# (favourite, info, video playback, deleting), Albums, Search and dark mode.
+# (favourite, info, video playback, deleting), press-and-hold previews, drag-selecting, Albums,
+# your own albums, hiding (and the Hidden album's lock), editing a copy, Search and dark mode.
 # Usage: smoke-test.sh <apk> <media dir> <output dir>
 set -euo pipefail
 
@@ -50,7 +51,8 @@ dump() {
   done
   [ -f "$OUT/$1.xml" ] || fail "couldn't read what's on screen ($1)"
 }
-shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
+# Android blanks screenshots of secure screens (like its PIN prompt); drop those empty files.
+shot() { adb exec-out screencap -p > "$OUT/$1.png"; [ -s "$OUT/$1.png" ] || rm -f "$OUT/$1.png"; }
 tap() { # tap <dump name> <text> [first|last]
   local xy
   xy=$(python3 "$HERE/find_text.py" "$OUT/$1.xml" "$2" "${3:-first}") || fail "couldn't find '$2' on screen"
@@ -58,6 +60,15 @@ tap() { # tap <dump name> <text> [first|last]
 }
 has() { grep -qi "$2" "$OUT/$1.xml"; } # has <dump name> <grep pattern>
 crashed() { adb logcat -d | grep -A3 "FATAL EXCEPTION" | grep -q "$PKG"; }
+# Goes to the Albums tab's main screen. The tab remembers the album you were in, as on iOS, so
+# back out of it if needed.
+open_albums() {
+  dump nav
+  tap nav "Albums" last
+  sleep 2
+  dump nav
+  if has nav 'content-desc="Back"'; then tap nav "Back"; sleep 2; fi
+}
 
 adb wait-for-device
 adb install -r "$APK"
@@ -128,10 +139,32 @@ tap select "Photo, " last
 sleep 1
 dump select
 has select 'text="1 Photo Selected"' || fail "selecting a photo didn't say '1 Photo Selected'"
+# Drag sideways across a row to pick it all at once.
+ROW=$(python3 "$HERE/row_swipe.py" "$OUT/select.xml") || fail "couldn't find a row of photos to drag across"
+adb shell input swipe $ROW 800
+sleep 1
+dump select
 shot 05-select
+has select 'text="[2-9] \(Photos\|Items\) Selected"' || fail "dragging across a row didn't select its photos"
 tap select "Cancel"
 sleep 1
-echo "PASS: selecting photos"
+echo "PASS: selecting photos, by tapping and by dragging across them"
+
+echo "--- Press and hold"
+dump library
+XY=$(python3 "$HERE/find_text.py" "$OUT/library.xml" "Photo, " last) || fail "no photo to press"
+adb shell input swipe $XY $XY 900
+sleep 2
+dump preview
+shot 05b-preview
+has preview 'text="Copy"' || fail "pressing and holding a photo didn't show the menu"
+has preview 'text="Share"' || fail "the preview menu has no Share"
+has preview 'content-desc="Preview, Photo, ' || fail "pressing and holding didn't show a preview of the photo"
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+dump library
+has library 'text="Copy"' && fail "Back didn't close the preview"
+echo "PASS: press and hold shows a preview with a menu"
 
 echo "--- The viewer"
 dump library
@@ -222,6 +255,135 @@ sleep 2
 shot 13-dark-library
 adb shell cmd uimode night no || true
 
+echo "--- Your own albums"
+sleep 2
+open_albums
+dump albums
+tap albums "New Album"
+sleep 2
+adb shell input text Trip
+sleep 1
+dump naming
+shot 16-new-album
+tap naming "Save"
+sleep 2
+dump albums
+has albums '"Trip' || fail "the new album isn't in My Albums"
+tap albums "Library"
+sleep 2
+dump library
+tap library "Select"
+sleep 1
+dump select
+tap select "Photo, " last
+sleep 1
+dump select
+tap select "More"
+sleep 2
+dump more
+tap more "Add to Album"
+sleep 2
+dump picker
+shot 17-add-to-album
+tap picker "Trip"
+sleep 2
+open_albums
+dump albums
+tap albums "Trip"
+sleep 2
+dump trip
+shot 18-trip
+has trip 'text="1 Photo"' || fail "the photo added to Trip isn't in the album"
+echo "PASS: making an album and adding a photo to it"
+
+echo "--- Renaming, removing from and deleting an album"
+tap trip "Album Options"
+sleep 2
+dump options
+tap options "Rename Album"
+sleep 2
+adb shell input text Holiday # the old name is selected, so this replaces it
+sleep 1
+dump naming
+tap naming "Save"
+sleep 2
+dump trip
+has trip 'text="Holiday"' || fail "renaming the album didn't change its title"
+tap trip "Select"
+sleep 1
+dump trip
+tap trip "Photo, "
+sleep 1
+dump trip
+tap trip "More"
+sleep 2
+dump more
+tap more "Remove from Album"
+sleep 2
+dump trip
+has trip 'text="No Photos or Videos"' || fail "Remove from Album left the photo in the album"
+tap trip "Album Options"
+sleep 2
+dump options
+tap options "Delete Album"
+sleep 2
+dump confirm
+tap confirm "Delete Album"
+sleep 2
+dump albums
+has albums 'text="My Albums"' || fail "deleting the album didn't go back to Albums"
+has albums '"Holiday' && fail "the deleted album is still in My Albums"
+echo "PASS: renaming an album, removing a photo from it, and deleting it (not its photos)"
+
+echo "--- Hiding"
+dump albums
+tap albums "Library"
+sleep 2
+dump library
+tap library "Select"
+sleep 1
+dump select
+tap select "Photo, " last
+sleep 1
+dump select
+tap select "More"
+sleep 2
+dump more
+tap more "Hide"
+sleep 2
+dump library
+has library '10 Photos, 1 Video' || fail "hiding a photo didn't take it out of the Library"
+open_albums
+adb shell input swipe 540 1700 540 500 300 # down to Utilities
+sleep 1
+dump albums
+tap albums "Hidden"
+sleep 2
+dump hidden
+shot 19-hidden
+has hidden 'content-desc="Photo, ' || fail "the Hidden album doesn't show the hidden photo"
+tap hidden "Select"
+sleep 1
+dump hidden
+tap hidden "Photo, "
+sleep 1
+dump hidden
+tap hidden "More"
+sleep 2
+dump more
+tap more "Unhide"
+sleep 2
+dump hidden
+has hidden 'text="No Hidden Items"' || fail "unhiding didn't take the photo out of Hidden"
+tap hidden "Back"
+sleep 1
+dump albums
+tap albums "Library"
+sleep 2
+dump library
+has library '11 Photos, 1 Video' || fail "an unhidden photo didn't come back to the Library"
+echo "PASS: hiding takes a photo out of the Library into Hidden, and unhiding brings it back"
+
 echo "--- Deleting from the viewer"
 sleep 2
 dump library
@@ -231,7 +393,7 @@ dump viewer
 tap viewer "Info"
 sleep 2
 dump info
-GONE=$(grep -o 'text="PXL_smoke_[0-9]*\.jpg"' "$OUT/info.xml" | head -1 | cut -d'"' -f2)
+GONE=$(grep -o 'text="PXL_smoke_[0-9]*\.jpg"' "$OUT/info.xml" | head -1 | cut -d'"' -f2) || true
 [ -n "$GONE" ] || fail "couldn't read which photo is open"
 adb shell input keyevent KEYCODE_BACK
 sleep 1
@@ -256,6 +418,105 @@ sleep 2
 dump library
 has library '10 Photos, 1 Video' || fail "the Library still counts the deleted photo"
 echo "PASS: deleting moves on to the next photo and leaves the library"
+
+echo "--- Editing saves a copy"
+dump library
+tap library "Photo, " last
+sleep 3
+dump viewer
+tap viewer "Info"
+sleep 2
+dump info
+ORIG=$(grep -o 'text="PXL_smoke_[0-9]*\.jpg"' "$OUT/info.xml" | head -1 | cut -d'"' -f2) || true
+[ -n "$ORIG" ] || fail "couldn't read which photo is open"
+COPY="${ORIG%.jpg}_edited.jpg"
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+dump viewer
+tap viewer "Edit"
+sleep 3
+dump editor
+shot 23-editor
+tap editor "Filters"
+sleep 3
+dump editor
+tap editor "Mono"
+sleep 1
+tap editor "Crop"
+sleep 1
+dump editor
+tap editor "Rotate"
+sleep 2
+shot 24-edited
+dump editor
+tap editor "Done"
+sleep 8
+dump copy
+shot 25-copy
+tap copy "Info"
+sleep 2
+dump copyinfo
+has copyinfo "text=\"$COPY\"" || fail "the viewer didn't switch to the edited copy ($COPY)"
+has copyinfo 'Pixel Smoke' || fail "the edited copy lost the camera details"
+adb shell content query --uri content://media/external/images/media \
+  --projection _display_name:width:height:datetaken:date_modified:relative_path > "$OUT/media-after-edit.txt"
+REL=$(grep "_display_name=$COPY," "$OUT/media-after-edit.txt" | grep -o 'relative_path=[^,]*' | cut -d= -f2) || true
+adb pull "/sdcard/$REL$COPY" "$OUT/edited.jpg" > /dev/null || fail "couldn't fetch the edited copy from /sdcard/$REL$COPY"
+python3 "$HERE/check_edit.py" "$OUT/media-after-edit.txt" "$ORIG" "$COPY" "$OUT/edited.jpg" || fail "the edited copy isn't right"
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+adb shell input keyevent KEYCODE_BACK
+sleep 2
+dump library
+has library '11 Photos, 1 Video' || fail "the edited copy isn't in the Library"
+echo "PASS: editing saves a turned, black-and-white copy with the original's date and camera, and opens it"
+
+echo "--- With a screen lock, Hidden asks for it"
+dump library
+tap library "Select"
+sleep 1
+dump select
+tap select "Photo, " last
+sleep 1
+dump select
+tap select "More"
+sleep 2
+dump more
+tap more "Hide"
+sleep 2
+adb shell locksettings set-pin 1111
+sleep 1
+open_albums
+adb shell input swipe 540 1700 540 500 300
+sleep 1
+dump albums
+tap albums "Hidden"
+sleep 3
+dump locked
+shot 20-hidden-locked
+has locked 'content-desc="Photo, ' && fail "Hidden showed its photos without asking for the screen lock"
+adb shell input text 1111
+adb shell input keyevent KEYCODE_ENTER
+sleep 3
+dump unlocked
+shot 21-hidden-unlocked
+has unlocked 'content-desc="Photo, ' || fail "entering the PIN didn't open Hidden"
+# Going to the home screen and back must lock it again.
+adb shell input keyevent KEYCODE_HOME
+# Android tells an app it's in the background (onStop) only once the home screen has settled,
+# which can take a few seconds on the emulator; wait for that before coming back.
+for _ in $(seq 1 15); do
+  adb shell dumpsys activity activities | grep -A12 "$PKG/.MainActivity" | grep -q "state=STOPPED" && break
+  sleep 1
+done
+adb shell dumpsys activity activities | grep -A12 "$PKG/.MainActivity" | grep -o "state=[A-Z_]*" | head -1 || true
+adb shell am start -W -n "$PKG/.MainActivity"
+sleep 3
+dump relocked
+shot 22-hidden-relocked
+has relocked 'content-desc="Photo, ' && fail "Hidden stayed open after Lumen went to the background"
+adb shell locksettings clear --old 1111 || true
+echo "PASS: with a screen lock, Hidden opens only after it, and locks again in the background"
 
 if crashed; then
   adb logcat -d > "$OUT/logcat.txt"
