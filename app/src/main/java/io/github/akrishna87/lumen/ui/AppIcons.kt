@@ -81,6 +81,8 @@ object AppIcons {
         stroke(1.8f, "M4,8.5V6A2,2 0 0 1 6,4H8.5", "M15.5,4H18A2,2 0 0 1 20,6V8.5", "M20,15.5V18A2,2 0 0 1 18,20H15.5", "M8.5,20H6A2,2 0 0 1 4,18V15.5")
         stroke(1.8f, "M8,9H16", "M8,12H16", "M8,15H13")
     }
+    /** line.3.horizontal.decrease */
+    val Filter = icon("Filter") { stroke(2f, "M4.5,7H19.5", "M7.5,12H16.5", "M10.5,17H13.5") }
     val Plus = icon("Plus") { stroke(2.2f, "M12,5V19M5,12H19") }
     val EyeSlash = icon("EyeSlash") {
         stroke(1.8f, "M2.5,12C4.5,8 8,5.5 12,5.5C16,5.5 19.5,8 21.5,12C19.5,16 16,18.5 12,18.5C8,18.5 4.5,16 2.5,12Z", "M12,9A3,3 0 1 1 11.99,9Z")

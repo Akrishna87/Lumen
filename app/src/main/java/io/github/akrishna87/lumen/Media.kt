@@ -58,6 +58,9 @@ data class MediaItem(
 
     val isAnimated: Boolean get() = mimeType == "image/gif"
 
+    /** A copy saved by Lumen's editor ("…_edited.jpg"). */
+    val isEditedCopy: Boolean get() = fileName.substringBeforeLast('.').contains("_edited")
+
     /** "JPEG", "HEIF", "PNG", "MP4"… */
     val format: String
         get() = when (val sub = mimeType.substringAfter('/').uppercase(Locale.US)) {
@@ -289,13 +292,15 @@ object Format {
     fun plural(n: Int, word: String): String = String.format(Locale.getDefault(), "%,d %s", n, if (n == 1) word else word + "s")
 
     /** "Selected" bar title: "3 Photos Selected", "1 Video Selected", "4 Items Selected". */
-    fun selected(items: List<MediaItem>): String {
-        if (items.isEmpty()) return "Select Items"
+    fun selected(items: List<MediaItem>): String = if (items.isEmpty()) "Select Items" else items(items) + " Selected"
+
+    /** "3 Photos", "1 Video", "4 Items". */
+    fun items(items: List<MediaItem>): String {
         val word = when {
             items.all { it.isVideo } -> "Video"
             items.none { it.isVideo } -> "Photo"
             else -> "Item"
         }
-        return plural(items.size, word) + " Selected"
+        return plural(items.size, word)
     }
 }

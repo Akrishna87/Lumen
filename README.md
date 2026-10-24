@@ -29,6 +29,13 @@ and keeps your favourites.
   - **Years** and **Months**: big cards with a key photo, a strip of more photos
     and the count. Tap a year to see its months, and a month to jump to it in
     All Photos.
+- **Filter**: the button next to **Select** shows only **Favorites**, **Photos**,
+  **Videos**, **Edited** (copies saved by Lumen's editor) or **Screenshots**. The
+  filter's name shows under the date; tap it to see everything again. Swiping in the
+  viewer stays within the filter.
+- **Undo**: after hiding or unhiding, favouriting several photos, or adding to or
+  removing from an album, a banner offers **Undo** for a few seconds. Deleting has no
+  Undo banner: deleted photos go to Recently Deleted, where they can be recovered.
 - **Select**: tap **Select**, then tap photos, or drag your finger sideways across
   the grid to pick a whole run of them (it scrolls when you reach the top or bottom).
   Share, favourite or delete them from the toolbar.
@@ -162,8 +169,8 @@ GitHub Actions builds it (`.github/workflows/lumen-apk.yml`) on every push:
    panorama and a video, puts them on an Android 14 emulator, and checks the welcome
    screen, the Library, Months and Years, selecting (by tapping and by dragging
    across a row), the press-and-hold preview, the viewer (favourite, Info, a video
-   playing, deleting), Albums, Favorites, making an album and adding to it, hiding
-   and unhiding, Places (map and list), For You and a slideshow (that it moves, pauses and closes), editing (it checks the saved copy's pixels: turned, black and
+   playing, deleting), Albums, Favorites, making an album and adding to it, Library filters,
+   hiding (and Undo) and unhiding, Places (map and list), For You and a slideshow (that it moves, pauses and closes), editing (it checks the saved copy's pixels: turned, black and
    white, dated like the original), Search and dark mode. Then it sets a PIN and checks Hidden won't
    open without it, and finally copies a photo and checks Duplicates finds and merges it. Screenshots are saved
    with the build.

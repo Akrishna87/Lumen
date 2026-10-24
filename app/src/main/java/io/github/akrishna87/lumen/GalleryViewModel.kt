@@ -155,6 +155,8 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
         publish()
     }
 
+    fun album(id: String): UserAlbum? = albumStore.albums.value.firstOrNull { it.id == id }
+
     fun createAlbum(name: String): UserAlbum = albumStore.create(name).also { publish() }
 
     fun renameAlbum(id: String, name: String) {

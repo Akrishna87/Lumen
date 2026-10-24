@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -82,6 +83,8 @@ data class AlbumRef(val key: String, val title: String) {
         key == RECENTS -> state.items
         key == FAVORITES -> state.items.filter { it.id in favorites }
         key == VIDEOS -> state.videos
+        key == PHOTOS -> state.items.filter { !it.isVideo }
+        key == EDITED -> state.items.filter { it.isEditedCopy }
         key == SCREENSHOTS -> state.screenshots
         key == PANORAMAS -> state.panoramas
         key == ANIMATED -> state.animated
@@ -112,6 +115,8 @@ data class AlbumRef(val key: String, val title: String) {
         const val RECENTS = "recents"
         const val FAVORITES = "favorites"
         const val VIDEOS = "videos"
+        const val PHOTOS = "photos"
+        const val EDITED = "edited"
         const val SCREENSHOTS = "screenshots"
         const val PANORAMAS = "panoramas"
         const val ANIMATED = "animated"
@@ -153,6 +158,9 @@ enum class AppTab(val label: String, val icon: ImageVector) {
 
 data class SheetRequest(val message: String?, val actions: List<SheetAction>)
 
+/** "Hidden 2 Photos · Undo", shown for a few seconds after an action that can be taken back. */
+class UndoNote(val message: String, val undo: () -> Unit)
+
 data class NameRequest(val title: String, val message: String, val initial: String, val onSave: (String) -> Unit)
 
 /** Things any screen can do with photos: share, favourite, delete. */
@@ -185,6 +193,9 @@ class GalleryActions(
     /** Photos waiting for an album to be picked in the Add to Album sheet. */
     var picking by mutableStateOf<List<MediaItem>?>(null)
 
+    /** The Undo banner for the last hide, favourite or album change. */
+    var undo by mutableStateOf<UndoNote?>(null)
+
     /** The New Album / Rename Album dialog. */
     var naming by mutableStateOf<NameRequest?>(null)
 
@@ -216,16 +227,33 @@ class GalleryActions(
     fun toggleFavorite(item: MediaItem) = vm.toggleFavorite(item)
 
     fun setHidden(items: List<MediaItem>, hidden: Boolean) {
+        if (items.isEmpty()) return
         vm.setHidden(items, hidden)
         removed = removed + items.map { it.id } // the viewer moves on to the next photo
+        undo = UndoNote((if (hidden) "Hidden " else "Unhidden ") + Format.items(items)) {
+            vm.setHidden(items, !hidden)
+            removed = removed - items.map { it.id }.toSet()
+        }
     }
 
-    fun addToAlbum(albumId: String, items: List<MediaItem>) = vm.addToAlbum(albumId, items)
+    fun addToAlbum(albumId: String, items: List<MediaItem>) {
+        val album = vm.album(albumId) ?: return
+        val added = items.filter { it.id !in album.ids } // undo leaves the ones already there
+        vm.addToAlbum(albumId, items)
+        if (added.isNotEmpty()) undo = UndoNote("Added ${Format.items(added)} to \u201C${album.name}\u201D") { vm.removeFromAlbum(albumId, added) }
+    }
 
     fun removeFromAlbum(albumId: String, items: List<MediaItem>) {
+        val album = vm.album(albumId) ?: return
         vm.removeFromAlbum(albumId, items)
         removed = removed + items.map { it.id }
+        undo = UndoNote("Removed ${Format.items(items)} from \u201C${album.name}\u201D") {
+            vm.addToAlbum(albumId, items)
+            removed = removed - items.map { it.id }.toSet()
+        }
     }
+
+
 
     /** Asks for a name, makes the album, then (optionally) does something with it. */
     fun newAlbum(then: ((UserAlbum) -> Unit)? = null) {
@@ -286,7 +314,15 @@ class GalleryActions(
         runCatching { clipboard.setPrimaryClip(ClipData.newUri(activity.contentResolver, item.fileName, item.uri)) }
     }
 
-    fun setFavorite(items: List<MediaItem>, favorite: Boolean) = vm.setFavorite(items, favorite)
+    fun setFavorite(items: List<MediaItem>, favorite: Boolean) {
+        if (items.isEmpty()) return
+        val before = items.filter { it.id in vm.favorites.value }
+        vm.setFavorite(items, favorite)
+        undo = UndoNote((if (favorite) "Favorited " else "Unfavorited ") + Format.items(items)) {
+            vm.setFavorite(items - before.toSet(), false)
+            vm.setFavorite(before, true)
+        }
+    }
 
     fun delete(items: List<MediaItem>) {
         if (items.isEmpty()) return
@@ -489,8 +525,9 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 ui = library,
                                 gridState = libraryGrid,
                                 selection = selection,
-                                onOpen = { open(AlbumRef(AlbumRef.RECENTS, "Library"), it) },
-                                onPreview = { showPreview(AlbumRef(AlbumRef.RECENTS, "Library"), it) },
+                                actions = actions,
+                                onOpen = open,
+                                onPreview = showPreview,
                                 focusId = focusId,
                             )
                             AppTab.FOR_YOU -> ForYouScreen(state = state, onPlay = { slideshow = it })
@@ -580,6 +617,17 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                 modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 52.dp)
                     .clip(CircleShape).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 16.dp, vertical = 8.dp),
             )
+        }
+
+        actions.undo?.let { note ->
+            LaunchedEffect(note) {
+                delay(5_000)
+                if (actions.undo === note) actions.undo = null
+            }
+            UndoBanner(note, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 100.dp)) {
+                actions.undo = null
+                note.undo()
+            }
         }
 
         slideshow?.let { memory ->
@@ -729,5 +777,18 @@ private fun Feature(icon: ImageVector, tint: Color, title: String, text: String)
             Text(title, style = AppleType.headline, color = apple.label)
             Text(text, style = AppleType.subheadline, color = apple.secondaryLabel)
         }
+    }
+}
+
+/** A dark capsule with what was done and an Undo button, like the one Photos shows after hiding. */
+@Composable
+private fun UndoBanner(note: UndoNote, modifier: Modifier, onUndo: () -> Unit) {
+    Row(
+        modifier.clip(CircleShape).background(Color(0xE6202022)).padding(start = 18.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(note.message, style = AppleType.subheadline, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        Spacer(Modifier.width(8.dp))
+        BarText("Undo", bold = true, color = Color(0xFF0A84FF), onClick = onUndo)
     }
 }
