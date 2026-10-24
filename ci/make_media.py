@@ -7,7 +7,7 @@ import datetime
 import os
 import sys
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 out = sys.argv[1]
 for sub in ("camera", "screenshots", "panoramas"):
@@ -86,4 +86,14 @@ for sub in ("screenshots", "panoramas"):
         path = os.path.join(out, sub, name)
         t = os.path.getmtime(path) - 600
         os.utime(path, (t, t))
+# A photo of text, pushed only at the end of the test (so it doesn't change earlier counts). Its name
+# doesn't contain its words, so finding it by "receipt" proves the text inside was read.
+os.makedirs(os.path.join(out, "later"), exist_ok=True)
+note = Image.new("RGB", (1600, 1000), "white")
+pen = ImageDraw.Draw(note)
+font = ImageFont.load_default(size=120)
+pen.text((100, 220), "LUMEN RECEIPT", fill="black", font=font)
+pen.text((100, 520), "TOTAL 42.00", fill="black", font=font)
+note.save(os.path.join(out, "later", "Note.png"))
+
 print("made test photos in", out)

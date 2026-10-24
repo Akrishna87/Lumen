@@ -46,6 +46,8 @@ fun SearchScreen(
     onAlbum: (AlbumRef) -> Unit,
     onOpen: (AlbumRef, MediaItem) -> Unit,
     onPreview: (AlbumRef, MediaItem) -> Unit,
+    /** (read, to read) while photos are being read for text, so search can't find all of it yet. */
+    textProgress: Pair<Int, Int>?,
 ) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val apple = LocalApple.current
@@ -62,7 +64,9 @@ fun SearchScreen(
         val all = state.months.asReversed()
         if (words.isEmpty()) all.take(6) else all.filter { m -> words.all { m.title.contains(it, ignoreCase = true) } }
     }
-    val results = remember(state, words) { if (words.isEmpty()) emptyList() else state.items.filter { it.matches(words) }.asReversed() }
+    val results = remember(state, words) {
+        if (words.isEmpty()) emptyList() else state.items.filter { it.matches(words, state.text[it.id].orEmpty()) }.asReversed()
+    }
     val resultsRef = AlbumRef.search(query)
 
     Column(Modifier.fillMaxSize().background(apple.background)) {
@@ -78,6 +82,14 @@ fun SearchScreen(
                     onFocusChange = { focused = it },
                     modifier = Modifier.padding(bottom = 6.dp),
                 )
+                textProgress?.let { (done, total) ->
+                    Text(
+                        "Reading text in photos\u2026 $done of $total",
+                        style = AppleType.footnote,
+                        color = apple.secondaryLabel,
+                        modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 4.dp),
+                    )
+                }
             }
             if (words.isNotEmpty() && albums.isEmpty() && months.isEmpty() && results.isEmpty()) {
                 item(key = "none") {

@@ -11,6 +11,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.statusBarsPadding
+import io.github.akrishna87.lumen.TextReader
+import io.github.akrishna87.lumen.TextLine
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -158,6 +162,10 @@ fun Viewer(
     var zoomOffset by remember { mutableStateOf(Offset.Zero) }
     var showInfo by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<MediaItem?>(null) }
+    // Live Text: the lines found in the photo on screen (and its size when read), while showing them.
+    var liveText by remember { mutableStateOf<Pair<List<TextLine>, android.util.Size>?>(null) }
+    var readingText by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
 
     // One player for the whole viewer; it follows whichever video is on screen.
     val player = remember { ExoPlayer.Builder(context).build() }
@@ -176,6 +184,7 @@ fun Viewer(
         }
     }
     LaunchedEffect(current.id) {
+        liveText = null
         onCurrentChange(current.id)
         firstFrame = false
         if (current.isVideo) {
@@ -276,7 +285,7 @@ fun Viewer(
             modifier = Modifier.fillMaxSize().graphicsLayer { alpha = if (settled) 1f else 0f },
             pageSpacing = 14.dp,
             beyondViewportPageCount = 1,
-            userScrollEnabled = !zoomed && dismissY == 0f,
+            userScrollEnabled = !zoomed && dismissY == 0f && liveText == null,
             key = { items[it].id },
         ) { page ->
             val item = items[page]
@@ -332,6 +341,71 @@ fun Viewer(
                     .graphicsLayer { alpha = if (from != null) 1f else hero.value },
             ) {
                 ThumbImage(heroShot, Modifier.fillMaxSize())
+            }
+        }
+
+        // Live Text: the text Lumen found in this photo, outlined; tap a line to copy it.
+        liveText?.let { (lines, size) ->
+            val photo = fittedRect(current, rootSize)
+            val scale = photo.width / size.width
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)).tap { liveText = null }) {
+                lines.forEach { line ->
+                    val box = line.box
+                    Box(
+                        Modifier.offset { IntOffset((photo.left + box.left * scale).roundToInt() - 4, (photo.top + box.top * scale).roundToInt() - 4) }
+                            .size(with(density) { (box.width() * scale + 8).toDp() }, with(density) { (box.height() * scale + 8).toDp() })
+                            .clip(RoundedCornerShape(5.dp)).background(Color.White.copy(alpha = 0.28f))
+                            .border(1.dp, Color.White, RoundedCornerShape(5.dp))
+                            .tap { copyText(context, line.text); copied = true }
+                            .semantics { contentDescription = line.text },
+                    )
+                }
+            }
+            CapsuleButton(
+                "Copy All",
+                overMedia = true,
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 140.dp),
+            ) {
+                copyText(context, lines.joinToString("\n") { it.text })
+                copied = true
+            }
+        }
+        if (copied) {
+            LaunchedEffect(Unit) {
+                delay(1500)
+                copied = false
+            }
+            Text(
+                "Copied",
+                style = AppleType.subheadline.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White,
+                modifier = Modifier.align(Alignment.Center).clip(CircleShape).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 18.dp, vertical = 9.dp),
+            )
+        }
+
+        // The Live Text button, on photos where the background reading found text.
+        val hasText = !current.isVideo && !state.text[current.id].isNullOrBlank()
+        if (hasText && chrome && dismissY == 0f && settled) {
+            Box(
+                Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 12.dp).size(40.dp).clip(CircleShape)
+                    .background(if (liveText != null) apple.tint else Color.Black.copy(alpha = 0.45f))
+                    .tap {
+                        if (liveText != null) liveText = null
+                        else if (!readingText) {
+                            readingText = true
+                            val item = current
+                            scope.launch {
+                                val found = TextReader.lines(context, item)
+                                readingText = false
+                                // Only if the same photo is still on screen.
+                                if (items.getOrNull(pager.currentPage)?.id == item.id && found != null) liveText = found
+                            }
+                        }
+                    }
+                    .semantics { contentDescription = "Live Text" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(AppIcons.LiveText, null, tint = Color.White, modifier = Modifier.size(22.dp).graphicsLayer { alpha = if (readingText) 0.4f else 1f })
             }
         }
 
@@ -549,6 +623,12 @@ private fun ZoomablePage(
 private enum class Mode { UNDECIDED, TRANSFORM, DISMISS, PAGER }
 
 private enum class Phase { OPENING, OPEN, CLOSING }
+
+/** Puts text on the clipboard. */
+private fun copyText(context: android.content.Context, text: String) {
+    context.getSystemService(android.content.ClipboardManager::class.java)
+        ?.setPrimaryClip(android.content.ClipData.newPlainText("Text from a photo", text))
+}
 
 /** Where a photo sits on screen at 1×: as large as fits, centred. */
 private fun fittedRect(item: MediaItem, box: IntSize): Rect {

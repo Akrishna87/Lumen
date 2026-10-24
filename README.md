@@ -86,8 +86,15 @@ and keeps your favourites.
   **See All**. **Media Types** has Videos, Screenshots, Panoramas and Animated
   (GIFs). On Android 11+, **Recently Deleted** shows deleted items and the days left
   before they're removed for good, with **Recover** and **Delete**.
-- **Search**: albums, months ("October", "2025") and file names, with suggestions
-  for albums and recent months before you type.
+- **Search**: albums, months ("October", "2025"), file names, and **words inside
+  photos** (a receipt, a sign, a screenshot), with suggestions for albums and recent
+  months before you type. Lumen reads the text in your photos itself, entirely on the
+  phone with [Tesseract](https://github.com/tesseract-ocr/tesseract), so nothing is
+  sent anywhere. It reads each photo once, newest first, while Lumen is open (Search
+  shows how far it has got); on a big library the first pass takes a while.
+- **Live Text**: on a photo with text, the text button in the viewer outlines each
+  line. Tap a line to copy it, or **Copy All**. Works best on screenshots and
+  documents; text in ordinary photos (signs, handwriting) is hit and miss.
 - **Limited access** (Android 14+): if you let Lumen see only some photos, Albums
   says so and **Manage…** lets you change the selection.
 - Light and dark mode follow the phone's setting.
@@ -114,6 +121,9 @@ instant. Requires Android 8.0 or newer.
   GIFs and video frames load with [Coil](https://coil-kt.github.io/coil/), and videos
   play with [Media3](https://developer.android.com/media/media3) ExoPlayer.
 - Camera details are read with AndroidX ExifInterface.
+- Text in photos is read with [Tesseract4Android](https://github.com/adaptech-cz/Tesseract4Android)
+  (Apache 2.0) and Tesseract's English model (`tessdata_fast`, Apache 2.0), which CI
+  downloads at a pinned version and checks before building.
 
 | File | What's in it |
 | --- | --- |
@@ -137,6 +147,7 @@ instant. Requires Android 8.0 or newer.
 | `Places.kt` | Reads photo locations (cached) and groups them into places |
 | `ui/PlacesScreen.kt` | Places: the map and the list |
 | `Duplicates.kt`, `ui/DuplicatesScreen.kt` | Finding and merging duplicates |
+| `TextReader.kt` | Reads text in photos (Tesseract) and keeps the words found for search |
 | `ui/AlbumSheets.kt` | Add to Album, and the New / Rename Album dialog |
 | `ui/Components.kt` | iOS-style controls |
 | `ui/Theme.kt` | iOS colours and text styles in Inter |

@@ -2,7 +2,8 @@
 # Runs inside the Android emulator job: installs the APK, puts test photos and a video on the
 # "phone", and checks the welcome screen, the Library (All Photos, Months, Years), the viewer
 # (favourite, info, video playback, deleting), press-and-hold previews, drag-selecting, Albums,
-# your own albums, hiding (and the Hidden album's lock), editing a copy, Search and dark mode.
+# your own albums, hiding (and the Hidden album's lock), editing a copy, Search (including text
+# inside photos, and Live Text) and dark mode.
 # Usage: smoke-test.sh <apk> <media dir> <output dir>
 set -euo pipefail
 
@@ -637,6 +638,43 @@ sleep 4
 dump duplicates
 has duplicates 'text="No Duplicates"' || fail "merging didn't remove the copy"
 echo "PASS: Duplicates finds an identical copy, and merging keeps one"
+
+echo "--- Text in photos"
+adb shell mkdir -p /sdcard/Pictures/Notes
+adb push "$MEDIA/later/Note.png" /sdcard/Pictures/Notes/ > /dev/null
+adb shell content call --uri content://media --method scan_volume --arg external_primary > /dev/null 2>&1 || true
+sleep 3
+dump nav
+tap nav "Search" last
+sleep 2
+dump search
+if has search 'content-desc="Clear text"'; then tap search "Clear text"; sleep 1; dump search; fi
+tap search "Albums, Months, Files and More"
+sleep 1
+adb shell input text receipt
+sleep 1
+adb shell input keyevent KEYCODE_BACK # hide the keyboard
+# Lumen reads text in the background; wait for it to reach the new photo.
+for _ in $(seq 1 30); do
+  sleep 3
+  dump search
+  has search '[0-9] Result' && break
+done
+shot 32-text-search
+has search 'text="1 Result"' || fail "searching 'receipt' didn't find the photo with that word in it"
+tap search "Photo, "
+sleep 3
+dump viewer
+tap viewer "Live Text"
+sleep 8
+dump live
+shot 33-live-text
+has live 'content-desc="[^"]*receipt' || fail "Live Text didn't outline the photo's text"
+tap live "Copy All"
+sleep 1
+dump copied
+has copied 'text="Copied"' || fail "Copy All didn't copy the text"
+echo "PASS: search finds words inside photos, and Live Text outlines and copies them"
 
 if crashed; then
   adb logcat -d > "$OUT/logcat.txt"
