@@ -101,6 +101,7 @@ echo "--- The Library"
 adb shell am force-stop "$PKG"
 adb shell pm grant "$PKG" android.permission.READ_MEDIA_IMAGES
 adb shell pm grant "$PKG" android.permission.READ_MEDIA_VIDEO
+adb shell pm grant "$PKG" android.permission.ACCESS_MEDIA_LOCATION # for Places
 adb shell am start -W -n "$PKG/.MainActivity"
 sleep 6
 dump library
@@ -280,7 +281,33 @@ sleep 2
 dump foryou
 has foryou 'text="Memories"' || fail "closing the slideshow didn't go back to For You"
 echo "PASS: For You shows memories (including On This Day), and they play as slideshows"
-tap foryou "Search" # back where the dark-mode step expects to be
+
+echo "--- Places"
+open_albums
+dump albums
+tap albums "Places" last # the row, not the section heading above it
+sleep 8
+dump places
+shot 29-places-map
+has places 'content-desc="Map of 2 places"' || fail "the Places map doesn't show the test photos' two places"
+tap places "Grid"
+sleep 2
+dump places
+shot 30-places-grid
+has places 'content-desc="Place, 3 Photos"' || fail "Places doesn't group the 3 Chennai photos"
+has places 'content-desc="Place, 2 Photos"' || fail "Places doesn't group the 2 Paris photos"
+tap places "Place, 3 Photos"
+sleep 2
+dump place
+has place 'text="3 Photos"' || fail "a place doesn't open its photos"
+tap place "Back"
+sleep 1
+dump places
+tap places "Back"
+sleep 1
+echo "PASS: Places groups photos by where they were taken, on a map and in a list"
+dump albums
+tap albums "Search" # back where the dark-mode step expects to be
 sleep 2
 
 echo "--- Dark mode"

@@ -71,6 +71,12 @@ and keeps your favourites.
   full-screen **slideshow**, each photo slowly zooming and cross-fading to the next.
   Tap it to pause, close, or **Add Music**: pick a song from your phone, and Lumen
   remembers it for later slideshows.
+- **Places**: under Albums, where photos were taken, from the location the camera
+  saved in them. **Map** shows each place as a photo with a count on an
+  [OpenStreetMap](https://www.openstreetmap.org/copyright) map; **Grid** lists the
+  same places. Places are labelled by coordinates: Lumen doesn't look up city names,
+  since that would send your photos' locations to an online service. The map tiles
+  are the only thing Lumen downloads.
 - **Albums**: **My Albums** (Recents, Favorites, your own albums, then each folder like Camera,
   Screenshots or WhatsApp Images) as two rows of covers that scroll sideways, with
   **See All**. **Media Types** has Videos, Screenshots, Panoramas and Animated
@@ -124,6 +130,8 @@ instant. Requires Android 8.0 or newer.
 | `ui/Editor.kt` | The editor screen |
 | `Memories.kt` | Builds the For You memories |
 | `ui/ForYouScreen.kt`, `ui/Slideshow.kt` | For You, and the memory slideshow |
+| `Places.kt` | Reads photo locations (cached) and groups them into places |
+| `ui/PlacesScreen.kt` | Places: the map and the list |
 | `ui/AlbumSheets.kt` | Add to Album, and the New / Rename Album dialog |
 | `ui/Components.kt` | iOS-style controls |
 | `ui/Theme.kt` | iOS colours and text styles in Inter |
@@ -139,7 +147,7 @@ GitHub Actions builds it (`.github/workflows/lumen-apk.yml`) on every push:
    screen, the Library, Months and Years, selecting (by tapping and by dragging
    across a row), the press-and-hold preview, the viewer (favourite, Info, a video
    playing, deleting), Albums, Favorites, making an album and adding to it, hiding
-   and unhiding, For You and a slideshow (that it moves, pauses and closes), editing (it checks the saved copy's pixels: turned, black and
+   and unhiding, Places (map and list), For You and a slideshow (that it moves, pauses and closes), editing (it checks the saved copy's pixels: turned, black and
    white, dated like the original), Search and dark mode. Last, it sets a PIN and checks Hidden won't
    open without it. Screenshots are saved
    with the build.

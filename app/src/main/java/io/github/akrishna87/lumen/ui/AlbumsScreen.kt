@@ -64,6 +64,7 @@ fun AlbumsScreen(
     onSeeAll: () -> Unit,
     onNewAlbum: () -> Unit,
     onHidden: () -> Unit,
+    onPlaces: () -> Unit,
 ) {
     val apple = LocalApple.current
     val list = rememberLazyListState()
@@ -99,6 +100,11 @@ fun AlbumsScreen(
             item(key = "myAlbums") {
                 SectionHeader("My Albums", action = "See All", onAction = onSeeAll)
                 AlbumCarousel(covers, onAlbum)
+            }
+            item(key = "places") {
+                Spacer(Modifier.height(18.dp))
+                SectionHeader("Places")
+                AppleRow(title = "Places", icon = AppIcons.Map, showDivider = false, onClick = onPlaces)
             }
             item(key = "types") {
                 Spacer(Modifier.height(18.dp))

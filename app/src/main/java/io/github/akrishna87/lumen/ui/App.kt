@@ -71,6 +71,7 @@ import io.github.akrishna87.lumen.GalleryViewModel
 import io.github.akrishna87.lumen.LibraryState
 import io.github.akrishna87.lumen.MediaItem
 import io.github.akrishna87.lumen.Memory
+import io.github.akrishna87.lumen.Place
 import io.github.akrishna87.lumen.HiddenLock
 import io.github.akrishna87.lumen.UserAlbum
 import androidx.fragment.app.FragmentActivity
@@ -91,6 +92,8 @@ data class AlbumRef(val key: String, val title: String) {
         }
         key.startsWith(SEARCH) -> searchWords(key.removePrefix(SEARCH)).let { words -> state.items.filter { it.matches(words) } }
         key == HIDDEN -> state.hidden
+        key.startsWith(PLACE) -> key.removePrefix(PLACE).split(',').mapNotNull { it.toLongOrNull() }.toSet()
+            .let { ids -> state.items.filter { it.id in ids } }
         key.startsWith(USER) -> state.userAlbums.firstOrNull { it.album.id == userAlbumId }?.items.orEmpty()
         else -> emptyList()
     }
@@ -118,11 +121,13 @@ data class AlbumRef(val key: String, val title: String) {
         const val SEARCH = "search:"
         const val HIDDEN = "hidden"
         const val USER = "user:"
+        const val PLACE = "place:"
 
         fun folder(folder: String, name: String) = AlbumRef(FOLDER + folder, name)
         fun month(year: Int, month: Int, title: String) = AlbumRef("$MONTH$year-$month", title)
         fun search(query: String) = AlbumRef(SEARCH + query, "Search")
         fun user(id: String, name: String) = AlbumRef(USER + id, name)
+        fun place(place: Place) = AlbumRef(PLACE + place.photos.joinToString(",") { it.id.toString() }, place.label)
 
         fun searchWords(query: String): List<String> = query.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
     }
@@ -131,6 +136,7 @@ data class AlbumRef(val key: String, val title: String) {
 sealed interface Route {
     data class AlbumDetail(val album: AlbumRef, val backLabel: String) : Route
     data object AllAlbums : Route
+    data object Places : Route
 }
 
 /** What the full-screen viewer is showing. */
@@ -445,6 +451,11 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                             onPreview = showPreview,
                             focusId = focusId,
                         )
+                        Route.Places -> PlacesScreen(
+                            state = state,
+                            onBack = { stacks[t].removeAt(stacks[t].lastIndex) },
+                            onPlace = { push(Route.AlbumDetail(it, "Places")) },
+                        )
                         Route.AllAlbums -> AllAlbumsScreen(
                             state = state,
                             onBack = { stacks[t].removeAt(stacks[t].lastIndex) },
@@ -471,6 +482,7 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 onSeeAll = { push(Route.AllAlbums) },
                                 onNewAlbum = { actions.newAlbum() },
                                 onHidden = openHidden,
+                                onPlaces = { push(Route.Places) },
                             )
                             AppTab.SEARCH -> SearchScreen(
                                 state = state,
