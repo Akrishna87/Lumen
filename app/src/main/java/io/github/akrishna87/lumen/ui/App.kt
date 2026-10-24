@@ -343,6 +343,9 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
     val libraryGrid = rememberLazyGridState()
 
     val open: (AlbumRef, MediaItem) -> Unit = { album, item ->
+        // Forget photos marked as removed outside a viewer (say, unhidden from Select mode), or
+        // this viewer would skip them.
+        actions.forgetRemoved()
         focusId = item.id
         viewer = ViewerTarget(album, item.id)
     }

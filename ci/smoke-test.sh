@@ -355,7 +355,7 @@ dump viewer
 tap viewer "Info"
 sleep 2
 dump info
-GONE=$(grep -o 'text="PXL_smoke_[0-9]*\.jpg"' "$OUT/info.xml" | head -1 | cut -d'"' -f2)
+GONE=$(grep -o 'text="PXL_smoke_[0-9]*\.jpg"' "$OUT/info.xml" | head -1 | cut -d'"' -f2) || true
 [ -n "$GONE" ] || fail "couldn't read which photo is open"
 adb shell input keyevent KEYCODE_BACK
 sleep 1
