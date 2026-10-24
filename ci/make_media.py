@@ -63,7 +63,11 @@ PLACES = {0: (13.0827, 80.2707), 1: (13.0850, 80.2101), 2: (13.0500, 80.2824), 3
 for i in range(8):
     e = exif()
     if i == 0:  # taken on this day last year
-        e.get_ifd(0x8769)[0x9003] = a_year_ago().strftime("%Y:%m:%d %H:%M:%S")  # DateTimeOriginal
+        taken = a_year_ago().astimezone()
+        e.get_ifd(0x8769)[0x9003] = taken.strftime("%Y:%m:%d %H:%M:%S")  # DateTimeOriginal
+        # OffsetTimeOriginal: without a time zone, Android 11+ ignores a date that doesn't match the
+        # file's own time, as cameras always write one.
+        e.get_ifd(0x8769)[0x9011] = taken.strftime("%z")[:3] + ":" + taken.strftime("%z")[3:]
     if i in PLACES:
         lat, lon = PLACES[i]
         gps = e.get_ifd(0x8825)
