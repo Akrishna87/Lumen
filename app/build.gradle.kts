@@ -81,6 +81,9 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.5.1")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // Tesseract, for finding text in photos fully offline. Its English model is fetched by CI
+    // into src/main/assets/tessdata (see .github/workflows/lumen-apk.yml).
+    implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
     // OpenStreetMap maps for Places.
     implementation("org.osmdroid:osmdroid-android:6.1.20")
     implementation("io.coil-kt:coil-gif:2.7.0")
