@@ -72,9 +72,10 @@ data class MediaItem(
     val description: String
         get() = (if (isVideo) "Video" else "Photo") + ", " + dateTime.format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT))
 
-    fun matches(words: List<String>): Boolean {
+    /** Whether every search word appears in its name, folder, date, kind, or [text] (words found in the photo). */
+    fun matches(words: List<String>, text: String = ""): Boolean {
         val haystack = listOf(fileName, folder, Format.month(date), date.year.toString(), if (isVideo) "video" else "photo",
-            if (isScreenshot) "screenshot" else "", if (isPanorama) "panorama" else "").joinToString(" ")
+            if (isScreenshot) "screenshot" else "", if (isPanorama) "panorama" else "", text).joinToString(" ")
         return words.all { haystack.contains(it, ignoreCase = true) }
     }
 }

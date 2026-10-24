@@ -37,6 +37,8 @@ data class LibraryState(
     val hidden: List<MediaItem> = emptyList(),
     /** The person's own albums, with their (visible) photos in the order they were added. */
     val userAlbums: List<UserAlbumItems> = emptyList(),
+    /** Words found in each photo (lower case), for search. Filled in as photos are read. */
+    val text: Map<Long, String> = emptyMap(),
 ) {
     val albums: List<Album> by lazy { Grouping.albums(items) }
     val months: List<MonthGroup> by lazy { Grouping.months(items) }
@@ -58,6 +60,15 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
 
     private val hiddenStore = HiddenPhotos(app)
     private val albumStore = UserAlbums(app)
+
+    private val textIndex = TextIndex(app)
+    /** id → (modified time when read, words). Only touched on the main thread. */
+    private val textCache = HashMap<Long, Pair<Long, String>>()
+    private var textCacheLoaded = false
+    private var textJob: Job? = null
+    private val _textProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+    /** (read, to read) while photos are being read for text; null when it's done. */
+    val textProgress: StateFlow<Pair<Int, Int>?> = _textProgress.asStateFlow()
 
     /** What MediaStore last returned, so hiding a photo or editing an album doesn't need a reload. */
     private var raw: Pair<List<MediaItem>, List<MediaItem>>? = null
@@ -90,6 +101,36 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
             }
             raw = items to trash
             publish()
+            readText()
+        }
+    }
+
+    /**
+     * Reads the text in photos not read yet (newest first), with Tesseract on the phone, while the
+     * app is open. Each photo is read once; the words are saved for search.
+     */
+    private fun readText() {
+        if (textJob?.isActive == true) return
+        textJob = viewModelScope.launch {
+            if (!textCacheLoaded) {
+                textCache.putAll(withContext(Dispatchers.IO) { runCatching { textIndex.all() }.getOrDefault(emptyMap()) })
+                textCacheLoaded = true
+                publish()
+            }
+            val ctx = getApplication<Application>()
+            while (true) {
+                val todo = _state.value.items.filter { !it.isVideo && textCache[it.id]?.first != it.modifiedSec }.asReversed()
+                if (todo.isEmpty()) break
+                todo.forEachIndexed { i, item ->
+                    _textProgress.value = i to todo.size
+                    val words = TextReader.words(ctx, item)
+                    withContext(Dispatchers.IO) { runCatching { textIndex.put(item.id, item.modifiedSec, words) } }
+                    textCache[item.id] = item.modifiedSec to words
+                    if (i % 10 == 9) publish()
+                }
+                publish()
+            }
+            _textProgress.value = null
         }
     }
 
@@ -105,6 +146,7 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
             trash = trash.filterNot { it.id in hiddenIds },
             hidden = hidden,
             userAlbums = albumStore.albums.value.map { album -> UserAlbumItems(album, album.ids.mapNotNull { byId[it] }) },
+            text = textCache.mapValues { it.value.second },
         )
     }
 

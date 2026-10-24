@@ -90,7 +90,7 @@ data class AlbumRef(val key: String, val title: String) {
         key.startsWith(MONTH) -> key.removePrefix(MONTH).split('-').let { (y, m) ->
             state.items.filter { it.date.year == y.toInt() && it.date.monthValue == m.toInt() }
         }
-        key.startsWith(SEARCH) -> searchWords(key.removePrefix(SEARCH)).let { words -> state.items.filter { it.matches(words) } }
+        key.startsWith(SEARCH) -> searchWords(key.removePrefix(SEARCH)).let { words -> state.items.filter { it.matches(words, state.text[it.id].orEmpty()) } }
         key == HIDDEN -> state.hidden
         key.startsWith(PLACE) -> key.removePrefix(PLACE).split(',').mapNotNull { it.toLongOrNull() }.toSet()
             .let { ids -> state.items.filter { it.id in ids } }
@@ -344,6 +344,7 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
     val access by vm.access.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
     val favorites by vm.favorites.collectAsStateWithLifecycle()
+    val textProgress by vm.textProgress.collectAsStateWithLifecycle()
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
 
@@ -511,6 +512,7 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 onAlbum = { push(Route.AlbumDetail(it, "Search")) },
                                 onOpen = open,
                                 onPreview = showPreview,
+                                textProgress = textProgress,
                             )
                         }
                     }
