@@ -60,6 +60,20 @@ tap() { # tap <dump name> <text> [first|last]
 }
 has() { grep -qi "$2" "$OUT/$1.xml"; } # has <dump name> <grep pattern>
 crashed() { adb logcat -d | grep -A3 "FATAL EXCEPTION" | grep -q "$PKG"; }
+# True when a screenshot's status bar has bright pixels: on a black or photo background its icons
+# must be white, or they can't be seen.
+status_icons_visible() {
+  python3 - "$1" <<'PY'
+import sys
+from PIL import Image
+image = Image.open(sys.argv[1]).convert("L")
+w, h = image.size
+brightest = max(image.crop((0, 0, w, int(h * 0.03))).getdata())
+print(f"brightest status bar pixel in {sys.argv[1].rsplit('/', 1)[-1]}: {brightest}")
+sys.exit(0 if brightest > 200 else 1)
+PY
+}
+
 # Goes to the Albums tab's main screen. The tab remembers the album you were in, as on iOS, so
 # back out of it if needed.
 open_albums() {
@@ -176,6 +190,13 @@ shot 06-viewer
 has viewer 'content-desc="Favorite"' || fail "the viewer has no Favorite button"
 has viewer 'content-desc="Info"' || fail "the viewer has no Info button"
 has viewer 'text="Today"' || fail "the viewer's title isn't the photo's date (Today)"
+# Tapping the photo hides the bars and turns the background black; the status bar icons turn white.
+adb shell input tap 540 1200
+sleep 2
+shot 06b-viewer-bars-hidden
+status_icons_visible "$OUT/06b-viewer-bars-hidden.png" || fail "with the viewer's bars hidden, the status bar icons can't be seen"
+adb shell input tap 540 1200
+sleep 2
 tap viewer "Favorite"
 sleep 1
 dump viewer
@@ -262,6 +283,7 @@ sleep 2
 shot 27-slideshow-a
 sleep 4
 shot 27-slideshow-b
+status_icons_visible "$OUT/27-slideshow-b.png" || fail "the slideshow's status bar icons can't be seen"
 python3 - "$OUT/27-slideshow-a.png" "$OUT/27-slideshow-b.png" <<'PY' || fail "the slideshow isn't moving"
 import sys
 from PIL import Image, ImageChops, ImageStat
@@ -512,15 +534,7 @@ sleep 3
 dump editor
 shot 23-editor
 # The editor is black even in light mode, so its status bar icons must be white, not black on black.
-python3 - "$OUT/23-editor.png" <<'PY' || fail "the editor's status bar icons can't be seen"
-import sys
-from PIL import Image
-image = Image.open(sys.argv[1]).convert("L")
-w, h = image.size
-brightest = max(image.crop((0, 0, w, int(h * 0.03))).getdata())
-print("brightest status bar pixel in the editor", brightest)
-sys.exit(0 if brightest > 200 else 1)
-PY
+status_icons_visible "$OUT/23-editor.png" || fail "the editor's status bar icons can't be seen"
 tap editor "Filters"
 sleep 3
 dump editor

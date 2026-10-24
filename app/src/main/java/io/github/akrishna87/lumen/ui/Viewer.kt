@@ -258,6 +258,8 @@ fun Viewer(
 
     val dismissProgress = min(1f, abs(dismissY) / with(density) { 400.dp.toPx() })
     val black = !chrome || apple.dark
+    // With the bars hidden the background is black, so the status bar icons turn white.
+    LightBarIcons(enabled = !chrome)
     val background by animateColorAsState(if (black) Color.Black else apple.background, label = "viewerBg")
     val closeDistance = with(density) { 110.dp.toPx() }
 

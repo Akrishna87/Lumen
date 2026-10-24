@@ -67,6 +67,7 @@ fun Slideshow(memory: Memory, onClose: () -> Unit) {
     var music by remember { mutableStateOf(MusicChoice.get(context)) }
 
     BackHandler(onBack = onClose)
+    LightBarIcons() // over photos and black, dark icons can't be seen
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { paused = true }
 
     LaunchedEffect(Unit) {
