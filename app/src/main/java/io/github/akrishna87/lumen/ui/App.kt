@@ -70,6 +70,8 @@ import io.github.akrishna87.lumen.Format
 import io.github.akrishna87.lumen.GalleryViewModel
 import io.github.akrishna87.lumen.LibraryState
 import io.github.akrishna87.lumen.MediaItem
+import io.github.akrishna87.lumen.Memory
+import io.github.akrishna87.lumen.Place
 import io.github.akrishna87.lumen.HiddenLock
 import io.github.akrishna87.lumen.UserAlbum
 import androidx.fragment.app.FragmentActivity
@@ -90,6 +92,8 @@ data class AlbumRef(val key: String, val title: String) {
         }
         key.startsWith(SEARCH) -> searchWords(key.removePrefix(SEARCH)).let { words -> state.items.filter { it.matches(words) } }
         key == HIDDEN -> state.hidden
+        key.startsWith(PLACE) -> key.removePrefix(PLACE).split(',').mapNotNull { it.toLongOrNull() }.toSet()
+            .let { ids -> state.items.filter { it.id in ids } }
         key.startsWith(USER) -> state.userAlbums.firstOrNull { it.album.id == userAlbumId }?.items.orEmpty()
         else -> emptyList()
     }
@@ -117,11 +121,13 @@ data class AlbumRef(val key: String, val title: String) {
         const val SEARCH = "search:"
         const val HIDDEN = "hidden"
         const val USER = "user:"
+        const val PLACE = "place:"
 
         fun folder(folder: String, name: String) = AlbumRef(FOLDER + folder, name)
         fun month(year: Int, month: Int, title: String) = AlbumRef("$MONTH$year-$month", title)
         fun search(query: String) = AlbumRef(SEARCH + query, "Search")
         fun user(id: String, name: String) = AlbumRef(USER + id, name)
+        fun place(place: Place) = AlbumRef(PLACE + place.photos.joinToString(",") { it.id.toString() }, place.label)
 
         fun searchWords(query: String): List<String> = query.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
     }
@@ -130,10 +136,20 @@ data class AlbumRef(val key: String, val title: String) {
 sealed interface Route {
     data class AlbumDetail(val album: AlbumRef, val backLabel: String) : Route
     data object AllAlbums : Route
+    data object Places : Route
+    data object Duplicates : Route
 }
 
 /** What the full-screen viewer is showing. */
 data class ViewerTarget(val album: AlbumRef, val startId: Long)
+
+/** The tab bar's tabs, in order, as in Photos on iPhone. */
+enum class AppTab(val label: String, val icon: ImageVector) {
+    LIBRARY("Library", AppIcons.Library),
+    FOR_YOU("For You", AppIcons.ForYou),
+    ALBUMS("Albums", AppIcons.Albums),
+    SEARCH("Search", AppIcons.Search),
+}
 
 data class SheetRequest(val message: String?, val actions: List<SheetAction>)
 
@@ -249,6 +265,20 @@ class GalleryActions(
         )
     }
 
+    /**
+     * Keeps the oldest of a set of duplicates and deletes the rest (after Android's confirmation),
+     * first giving the kept photo any heart and albums the others had.
+     */
+    fun merge(copies: List<MediaItem>) {
+        val keep = copies.minByOrNull { it.id } ?: return
+        val rest = copies - keep
+        if (rest.any { it.id in vm.favorites.value }) vm.setFavorite(listOf(keep), true)
+        vm.state.value.userAlbums
+            .filter { entry -> rest.any { it.id in entry.album.ids } }
+            .forEach { vm.addToAlbum(it.album.id, listOf(keep)) }
+        delete(rest)
+    }
+
     /** Puts the photo on the clipboard, for pasting into a chat or a note. */
     fun copy(item: MediaItem) {
         val activity = activity ?: return
@@ -334,12 +364,14 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
     }
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val stacks = remember { List(3) { mutableStateListOf<Route>() } }
+    val stacks = remember { List(AppTab.entries.size) { mutableStateListOf<Route>() } }
     var viewer by remember { mutableStateOf<ViewerTarget?>(null) }
     // The photo open in the viewer, which the grid underneath keeps in view.
     var focusId by remember { mutableStateOf<Long?>(null) }
     // Press-and-hold preview: the photo and the album it was pressed in.
     var preview by remember { mutableStateOf<Pair<AlbumRef, MediaItem>?>(null) }
+    // The memory playing as a slideshow.
+    var slideshow by remember { mutableStateOf<Memory?>(null) }
     // An edited copy waiting to appear in the library, so the viewer can switch to it.
     var editedCopy by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
@@ -434,13 +466,23 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                             onPreview = showPreview,
                             focusId = focusId,
                         )
+                        Route.Places -> PlacesScreen(
+                            state = state,
+                            onBack = { stacks[t].removeAt(stacks[t].lastIndex) },
+                            onPlace = { push(Route.AlbumDetail(it, "Places")) },
+                        )
+                        Route.Duplicates -> DuplicatesScreen(
+                            state = state,
+                            actions = actions,
+                            onBack = { stacks[t].removeAt(stacks[t].lastIndex) },
+                        )
                         Route.AllAlbums -> AllAlbumsScreen(
                             state = state,
                             onBack = { stacks[t].removeAt(stacks[t].lastIndex) },
                             onAlbum = { push(Route.AlbumDetail(it, "My Albums")) },
                         )
-                        null -> when (t) {
-                            0 -> LibraryScreen(
+                        null -> when (AppTab.entries[t]) {
+                            AppTab.LIBRARY -> LibraryScreen(
                                 state = state,
                                 favorites = favorites,
                                 ui = library,
@@ -450,7 +492,8 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 onPreview = { showPreview(AlbumRef(AlbumRef.RECENTS, "Library"), it) },
                                 focusId = focusId,
                             )
-                            1 -> AlbumsScreen(
+                            AppTab.FOR_YOU -> ForYouScreen(state = state, onPlay = { slideshow = it })
+                            AppTab.ALBUMS -> AlbumsScreen(
                                 state = state,
                                 favorites = favorites,
                                 access = access,
@@ -459,8 +502,10 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 onSeeAll = { push(Route.AllAlbums) },
                                 onNewAlbum = { actions.newAlbum() },
                                 onHidden = openHidden,
+                                onPlaces = { push(Route.Places) },
+                                onDuplicates = { push(Route.Duplicates) },
                             )
-                            else -> SearchScreen(
+                            AppTab.SEARCH -> SearchScreen(
                                 state = state,
                                 favorites = favorites,
                                 onAlbum = { push(Route.AlbumDetail(it, "Search")) },
@@ -475,7 +520,7 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                 SelectionToolbar(state, favorites, selection, actions, album = (stacks[tab].lastOrNull() as? Route.AlbumDetail)?.album)
             } else {
                 TabBar(
-                    tabs = listOf(TabItem("Library", AppIcons.Library), TabItem("Albums", AppIcons.Albums), TabItem("Search", AppIcons.Search)),
+                    tabs = AppTab.entries.map { TabItem(it.label, it.icon) },
                     selected = tab,
                     onSelect = { i ->
                         // Tapping the current tab again goes back to its first screen, as on iOS.
@@ -533,6 +578,10 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                 modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 52.dp)
                     .clip(CircleShape).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 16.dp, vertical = 8.dp),
             )
+        }
+
+        slideshow?.let { memory ->
+            Slideshow(memory, onClose = { slideshow = null })
         }
 
         preview?.let { (album, item) ->

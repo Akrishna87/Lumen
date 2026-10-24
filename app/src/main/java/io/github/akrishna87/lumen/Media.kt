@@ -34,6 +34,8 @@ data class MediaItem(
     val folder: String,
     /** Seconds since 1970 when it was moved to the trash (Android 11+), or 0. */
     val trashedUntil: Long = 0,
+    /** Seconds since 1970 when the file last changed, so cached details (like its place) can be refreshed. */
+    val modifiedSec: Long = 0,
 ) {
     val uri: Uri
         get() = ContentUris.withAppendedId(
@@ -177,6 +179,7 @@ object MediaRepository {
                     durationMs = if (isVideo) long(iDuration) else 0,
                     folder = folder,
                     trashedUntil = if (trashed) long(iExpires) else 0,
+                    modifiedSec = long(iModified),
                 )
             }
         }

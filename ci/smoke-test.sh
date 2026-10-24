@@ -101,6 +101,7 @@ echo "--- The Library"
 adb shell am force-stop "$PKG"
 adb shell pm grant "$PKG" android.permission.READ_MEDIA_IMAGES
 adb shell pm grant "$PKG" android.permission.READ_MEDIA_VIDEO
+adb shell pm grant "$PKG" android.permission.ACCESS_MEDIA_LOCATION # for Places
 adb shell am start -W -n "$PKG/.MainActivity"
 sleep 6
 dump library
@@ -245,6 +246,79 @@ shot 11-search
 has search 'text="Screenshots"' || fail "searching 'Screen' didn't suggest the Screenshots album"
 has search '[0-9] Results' || fail "searching 'Screen' didn't find the screenshots"
 echo "PASS: search finds albums and photos"
+
+echo "--- For You"
+dump search
+tap search "For You"
+sleep 3
+dump foryou
+shot 26-for-you
+MONTH="$(date +%B) $(date +%Y)"
+has foryou 'content-desc="Memory, On This Day"' || fail "For You has no On This Day memory (a test photo is from this day last year)"
+has foryou "content-desc=\"Memory, $MONTH\"" || fail "For You has no memory for $MONTH"
+tap foryou "Memory, $MONTH"
+# The slideshow never stops moving, so read it from screenshots, not the screen tree.
+sleep 2
+shot 27-slideshow-a
+sleep 4
+shot 27-slideshow-b
+python3 - "$OUT/27-slideshow-a.png" "$OUT/27-slideshow-b.png" <<'PY' || fail "the slideshow isn't moving"
+import sys
+from PIL import Image, ImageChops, ImageStat
+a, b = (Image.open(p).convert("L") for p in sys.argv[1:3])
+diff = ImageStat.Stat(ImageChops.difference(a, b)).mean[0]
+print(f"slideshow frames differ by {diff:.1f}")
+sys.exit(0 if diff > 2 else 1)
+PY
+adb shell input tap 540 1200 # pause and show the controls
+sleep 2
+dump slideshow
+shot 28-slideshow-controls
+has slideshow 'content-desc="Play"' || fail "tapping the slideshow didn't pause it"
+has slideshow 'text="Add Music"' || fail "the slideshow has no Add Music button"
+tap slideshow "Close"
+sleep 2
+dump foryou
+has foryou 'text="Memories"' || fail "closing the slideshow didn't go back to For You"
+echo "PASS: For You shows memories (including On This Day), and they play as slideshows"
+
+echo "--- Places"
+open_albums
+dump albums
+tap albums "Places" last # the row, not the section heading above it
+sleep 8
+dump places
+shot 29-places-map
+has places 'content-desc="Map of 2 places"' || fail "the Places map doesn't show the test photos' two places"
+# The map must stay below the title bar: the bar's spot (just under the status bar) is light grey/white.
+python3 - "$OUT/29-places-map.png" <<'PY' || fail "the map covers the Places title bar"
+import sys
+from PIL import Image
+image = Image.open(sys.argv[1]).convert("RGB")
+w, h = image.size
+pixel = image.getpixel((w // 2, int(h * 0.055)))
+print("title bar pixel", pixel)
+sys.exit(0 if min(pixel) > 225 else 1)
+PY
+tap places "Grid"
+sleep 2
+dump places
+shot 30-places-grid
+has places 'content-desc="Place, 3 Photos"' || fail "Places doesn't group the 3 Chennai photos"
+has places 'content-desc="Place, 2 Photos"' || fail "Places doesn't group the 2 Paris photos"
+tap places "Place, 3 Photos"
+sleep 2
+dump place
+has place 'text="3 Photos"' || fail "a place doesn't open its photos"
+tap place "Back"
+sleep 1
+dump places
+tap places "Back"
+sleep 1
+echo "PASS: Places groups photos by where they were taken, on a map and in a list"
+dump albums
+tap albums "Search" # back where the dark-mode step expects to be
+sleep 2
 
 echo "--- Dark mode"
 adb shell cmd uimode night yes || true
@@ -437,6 +511,16 @@ tap viewer "Edit"
 sleep 3
 dump editor
 shot 23-editor
+# The editor is black even in light mode, so its status bar icons must be white, not black on black.
+python3 - "$OUT/23-editor.png" <<'PY' || fail "the editor's status bar icons can't be seen"
+import sys
+from PIL import Image
+image = Image.open(sys.argv[1]).convert("L")
+w, h = image.size
+brightest = max(image.crop((0, 0, w, int(h * 0.03))).getdata())
+print("brightest status bar pixel in the editor", brightest)
+sys.exit(0 if brightest > 200 else 1)
+PY
 tap editor "Filters"
 sleep 3
 dump editor
@@ -517,6 +601,28 @@ shot 22-hidden-relocked
 has relocked 'content-desc="Photo, ' && fail "Hidden stayed open after Lumen went to the background"
 adb shell locksettings clear --old 1111 || true
 echo "PASS: with a screen lock, Hidden opens only after it, and locks again in the background"
+
+echo "--- Duplicates"
+adb push "$MEDIA/camera/PXL_smoke_03.jpg" "/sdcard/DCIM/Camera/PXL_smoke_03 copy.jpg" > /dev/null
+adb shell content call --uri content://media --method scan_volume --arg external_primary > /dev/null 2>&1 || true
+sleep 4
+open_albums
+adb shell input swipe 540 1700 540 500 300 # down to Utilities
+sleep 1
+dump albums
+tap albums "Duplicates"
+sleep 5
+dump duplicates
+shot 31-duplicates
+has duplicates 'text="2 Copies"' || fail "Duplicates didn't find the copied photo"
+tap duplicates "Merge"
+sleep 2
+dump allow
+tap allow "Allow"
+sleep 4
+dump duplicates
+has duplicates 'text="No Duplicates"' || fail "merging didn't remove the copy"
+echo "PASS: Duplicates finds an identical copy, and merging keeps one"
 
 if crashed; then
   adb logcat -d > "$OUT/logcat.txt"

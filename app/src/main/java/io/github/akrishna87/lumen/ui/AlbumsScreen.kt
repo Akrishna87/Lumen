@@ -64,6 +64,8 @@ fun AlbumsScreen(
     onSeeAll: () -> Unit,
     onNewAlbum: () -> Unit,
     onHidden: () -> Unit,
+    onPlaces: () -> Unit,
+    onDuplicates: () -> Unit,
 ) {
     val apple = LocalApple.current
     val list = rememberLazyListState()
@@ -100,6 +102,11 @@ fun AlbumsScreen(
                 SectionHeader("My Albums", action = "See All", onAction = onSeeAll)
                 AlbumCarousel(covers, onAlbum)
             }
+            item(key = "places") {
+                Spacer(Modifier.height(18.dp))
+                SectionHeader("Places")
+                AppleRow(title = "Places", icon = AppIcons.Map, showDivider = false, onClick = onPlaces)
+            }
             item(key = "types") {
                 Spacer(Modifier.height(18.dp))
                 SectionHeader("Media Types")
@@ -112,6 +119,7 @@ fun AlbumsScreen(
                 Spacer(Modifier.height(18.dp))
                 SectionHeader("Utilities")
                 // No count on Hidden, as in Photos: even how many are hidden stays behind the lock.
+                AppleRow(title = "Duplicates", icon = AppIcons.Duplicates, value = null, onClick = onDuplicates)
                 AppleRow(title = "Hidden", icon = AppIcons.EyeSlash, value = null, showDivider = Build.VERSION.SDK_INT >= 30, onClick = onHidden)
                 if (Build.VERSION.SDK_INT >= 30) {
                     MediaTypeRow(AppIcons.Trash, "Recently Deleted", state.trash.size, last = true) { onAlbum(AlbumRef(AlbumRef.TRASH, "Recently Deleted")) }

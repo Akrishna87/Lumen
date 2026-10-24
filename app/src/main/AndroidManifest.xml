@@ -9,6 +9,11 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- Android 10+: photo locations, for Places. -->
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+    <!-- Map tiles for Places, from OpenStreetMap: the only thing Lumen downloads. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Deleting a photo before Android 10 needs write access; newer versions ask per photo. -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"

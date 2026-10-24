@@ -1,5 +1,6 @@
 package io.github.akrishna87.lumen.ui
 
+import android.app.Activity
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -28,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,10 +48,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import io.github.akrishna87.lumen.Aspect
 import io.github.akrishna87.lumen.EditRenderer
 import io.github.akrishna87.lumen.EditStore
@@ -94,6 +98,24 @@ fun Editor(item: MediaItem, onCancel: () -> Unit, onSaved: (Long?) -> Unit) {
     var saving by remember { mutableStateOf(false) }
 
     BackHandler { if (!saving) onCancel() }
+
+    // The editor is black in light mode too, so the status and navigation bar icons turn white
+    // while it's open, and go back to how they were when it closes.
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.context as? Activity)?.window
+        val bars = window?.let { WindowCompat.getInsetsController(it, view) }
+        val lightStatus = bars?.isAppearanceLightStatusBars
+        val lightNavigation = bars?.isAppearanceLightNavigationBars
+        bars?.isAppearanceLightStatusBars = false
+        bars?.isAppearanceLightNavigationBars = false
+        onDispose {
+            if (bars != null && lightStatus != null && lightNavigation != null) {
+                bars.isAppearanceLightStatusBars = lightStatus
+                bars.isAppearanceLightNavigationBars = lightNavigation
+            }
+        }
+    }
 
     val source by produceState<Bitmap?>(null, item.id) {
         value = withContext(Dispatchers.IO) { EditStore.decode(context, item, PREVIEW_MAX) }

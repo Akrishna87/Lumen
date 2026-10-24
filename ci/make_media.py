@@ -3,6 +3,7 @@
 Usage: make_media.py <output dir>
 """
 import colorsys
+import datetime
 import os
 import sys
 
@@ -39,9 +40,41 @@ def exif():
     return e
 
 
+def a_year_ago():
+    """Today's date and time a year back, for the "On This Day" memory."""
+    now = datetime.datetime.now()
+    try:
+        return now.replace(year=now.year - 1)
+    except ValueError:  # 29 February
+        return now.replace(year=now.year - 1, day=28)
+
+
+def dms(value):
+    """Degrees as EXIF's (degrees, minutes, seconds)."""
+    value = abs(value)
+    d = int(value)
+    m = int((value - d) * 60)
+    return (float(d), float(m), round((value - d - m / 60) * 3600, 2))
+
+
+# Places: photos 1-3 were taken in Chennai, 4-5 in Paris (the delete, edit and hide steps use 7 and 8).
+PLACES = {0: (13.0827, 80.2707), 1: (13.0850, 80.2101), 2: (13.0500, 80.2824), 3: (48.8566, 2.3522), 4: (48.8606, 2.3376)}
+
 for i in range(8):
+    e = exif()
+    if i == 0:  # taken on this day last year
+        taken = a_year_ago().astimezone()
+        e.get_ifd(0x8769)[0x9003] = taken.strftime("%Y:%m:%d %H:%M:%S")  # DateTimeOriginal
+        # OffsetTimeOriginal: without a time zone, Android 11+ ignores a date that doesn't match the
+        # file's own time, as cameras always write one.
+        e.get_ifd(0x8769)[0x9011] = taken.strftime("%z")[:3] + ":" + taken.strftime("%z")[3:]
+    if i in PLACES:
+        lat, lon = PLACES[i]
+        gps = e.get_ifd(0x8825)
+        gps[1], gps[2] = ("N" if lat >= 0 else "S"), dms(lat)
+        gps[3], gps[4] = ("E" if lon >= 0 else "W"), dms(lon)
     picture((1600, 1200) if i % 3 else (1200, 1600), i / 8).save(
-        os.path.join(out, "camera", f"PXL_smoke_{i + 1:02d}.jpg"), quality=88, exif=exif())
+        os.path.join(out, "camera", f"PXL_smoke_{i + 1:02d}.jpg"), quality=88, exif=e)
 for i in range(2):
     picture((1080, 2400), 0.55 + i / 10).save(os.path.join(out, "screenshots", f"Screenshot_smoke_{i + 1}.png"))
 picture((4200, 1200), 0.08).save(os.path.join(out, "panoramas", "PANO_smoke.jpg"), quality=85)

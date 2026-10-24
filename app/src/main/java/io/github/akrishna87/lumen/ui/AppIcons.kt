@@ -28,6 +28,12 @@ object AppIcons {
             "M13.6,9.6A1.4,1.4 0 1 0 13.59,9.6Z")
     }
 
+    /** Tab bar: heart.text.square.fill */
+    val ForYou = icon("ForYou") {
+        fill("M6,3.5H18A2.5,2.5 0 0 1 20.5,6V18A2.5,2.5 0 0 1 18,20.5H6A2.5,2.5 0 0 1 3.5,18V6A2.5,2.5 0 0 1 6,3.5Z" +
+            "M12,16.5C12,16.5 7.5,13.8 7.5,10.7C7.5,9.3 8.6,8.3 9.8,8.3C10.8,8.3 11.6,8.9 12,9.6C12.4,8.9 13.2,8.3 14.2,8.3C15.4,8.3 16.5,9.3 16.5,10.7C16.5,13.8 12,16.5 12,16.5Z")
+    }
+
     /** Tab bar: rectangle.stack.fill */
     val Albums = icon("Albums") {
         stroke(1.8f, "M7.5,3.5H16.5", "M5,6.5H19")
@@ -62,6 +68,13 @@ object AppIcons {
     val RotateLeft = icon("RotateLeft") {
         stroke(1.8f, "M7,10H17A1.5,1.5 0 0 1 18.5,11.5V19A1.5,1.5 0 0 1 17,20.5H7A1.5,1.5 0 0 1 5.5,19V11.5A1.5,1.5 0 0 1 7,10Z")
         stroke(1.8f, "M8.5,6.5H13A4,4 0 0 1 17,6.5", "M10.5,4.5L8.5,6.5L10.5,8.5")
+    }
+    val Map = icon("Map") {
+        stroke(1.8f, "M3.5,6.5L9,4.5L15,6.5L20.5,4.5V17.5L15,19.5L9,17.5L3.5,19.5Z", "M9,4.5V17.5", "M15,6.5V19.5")
+    }
+    val Duplicates = icon("Duplicates") {
+        stroke(1.8f, "M9.5,8.5H18.5A1.5,1.5 0 0 1 20,10V18.5A1.5,1.5 0 0 1 18.5,20H9.5A1.5,1.5 0 0 1 8,18.5V10A1.5,1.5 0 0 1 9.5,8.5Z")
+        stroke(1.8f, "M16,8.5V5.5A1.5,1.5 0 0 0 14.5,4H5.5A1.5,1.5 0 0 0 4,5.5V14.5A1.5,1.5 0 0 0 5.5,16H8")
     }
     val Plus = icon("Plus") { stroke(2.2f, "M12,5V19M5,12H19") }
     val EyeSlash = icon("EyeSlash") {
