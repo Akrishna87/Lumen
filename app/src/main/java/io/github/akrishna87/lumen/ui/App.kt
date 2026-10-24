@@ -273,6 +273,7 @@ class GalleryActions(
 
     /** Called with the answer to Android's confirmation. */
     fun onResult(allowed: Boolean) {
+        leavingApp = false
         val items = waiting
         waiting = emptyList()
         if (!allowed || items.isEmpty()) return
@@ -362,6 +363,8 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
         viewer?.album?.isHidden == true || preview?.first?.isHidden == true
     LaunchedEffect(showingHidden) { if (!showingHidden) hiddenUnlocked = false }
     fun lockHidden() {
+        // Only a selection inside Hidden ends; one in the Library survives a trip to the home screen.
+        if (selection.active && (stacks[tab].lastOrNull() as? Route.AlbumDetail)?.album?.isHidden == true) selection.end()
         hiddenUnlocked = false
         stacks.forEach { stack -> stack.removeAll { it is Route.AlbumDetail && it.album.isHidden } }
         if (viewer?.album?.isHidden == true) {
@@ -369,10 +372,12 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
             focusId = null
         }
         if (preview?.first?.isHidden == true) preview = null
-        if (selection.active) selection.end()
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (!actions.leavingApp) lockHidden() }
+    // Some of Android's screens (the unlock prompt on Android 11+, delete confirmations) don't stop
+    // Lumen at all, so clear the flag on resume and when they answer, not only on start.
     LifecycleEventEffect(Lifecycle.Event.ON_START) { actions.leavingApp = false }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { actions.leavingApp = false }
     val openHidden: () -> Unit = {
         val route = Route.AlbumDetail(AlbumRef(AlbumRef.HIDDEN, "Hidden"), "Albums")
         val fragmentActivity = activity as? FragmentActivity
@@ -381,7 +386,7 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
             push(route)
         } else if (fragmentActivity != null) {
             actions.leavingApp = true // the PIN screen (Android 10 and older) stops Lumen
-            HiddenLock.unlock(fragmentActivity) {
+            HiddenLock.unlock(fragmentActivity, onDone = { actions.leavingApp = false }) {
                 hiddenUnlocked = true
                 push(route)
             }

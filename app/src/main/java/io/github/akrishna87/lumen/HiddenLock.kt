@@ -18,12 +18,19 @@ object HiddenLock {
     fun isSecure(context: Context): Boolean =
         context.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true
 
-    fun unlock(activity: FragmentActivity, onUnlocked: () -> Unit) {
+    /** [onDone] runs once the prompt has gone, whether or not it unlocked. */
+    fun unlock(activity: FragmentActivity, onDone: () -> Unit, onUnlocked: () -> Unit) {
         val prompt = BiometricPrompt(
             activity,
             ContextCompat.getMainExecutor(activity),
             object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onUnlocked()
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    onDone()
+                    onUnlocked()
+                }
+
+                // Cancelled or locked out. (A single wrong try is onAuthenticationFailed, with the prompt still up.)
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) = onDone()
             },
         )
         // No negative button: with the screen lock allowed, Android supplies "Use PIN" itself.

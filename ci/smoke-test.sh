@@ -406,10 +406,22 @@ sleep 3
 dump locked
 shot 20-hidden-locked
 has locked 'content-desc="Photo, ' && fail "Hidden showed its photos without asking for the screen lock"
-adb shell input keyevent KEYCODE_BACK
-sleep 1
+adb shell input text 1111
+adb shell input keyevent KEYCODE_ENTER
+sleep 3
+dump unlocked
+shot 21-hidden-unlocked
+has unlocked 'content-desc="Photo, ' || fail "entering the PIN didn't open Hidden"
+# Going to the home screen and back must lock it again.
+adb shell input keyevent KEYCODE_HOME
+sleep 2
+adb shell am start -W -n "$PKG/.MainActivity"
+sleep 3
+dump relocked
+shot 22-hidden-relocked
+has relocked 'content-desc="Photo, ' && fail "Hidden stayed open after Lumen went to the background"
 adb shell locksettings clear --old 1111 || true
-echo "PASS: with a screen lock set, Hidden doesn't open without it"
+echo "PASS: with a screen lock, Hidden opens only after it, and locks again in the background"
 
 if crashed; then
   adb logcat -d > "$OUT/logcat.txt"
