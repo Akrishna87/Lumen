@@ -503,7 +503,13 @@ shot 21-hidden-unlocked
 has unlocked 'content-desc="Photo, ' || fail "entering the PIN didn't open Hidden"
 # Going to the home screen and back must lock it again.
 adb shell input keyevent KEYCODE_HOME
-sleep 2
+# Android tells an app it's in the background (onStop) only once the home screen has settled,
+# which can take a few seconds on the emulator; wait for that before coming back.
+for _ in $(seq 1 15); do
+  adb shell dumpsys activity activities | grep -A12 "$PKG/.MainActivity" | grep -q "state=STOPPED" && break
+  sleep 1
+done
+adb shell dumpsys activity activities | grep -A12 "$PKG/.MainActivity" | grep -o "state=[A-Z_]*" | head -1 || true
 adb shell am start -W -n "$PKG/.MainActivity"
 sleep 3
 dump relocked
