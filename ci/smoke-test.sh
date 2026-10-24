@@ -290,6 +290,16 @@ sleep 8
 dump places
 shot 29-places-map
 has places 'content-desc="Map of 2 places"' || fail "the Places map doesn't show the test photos' two places"
+# The map must stay below the title bar: the bar's spot (just under the status bar) is light grey/white.
+python3 - "$OUT/29-places-map.png" <<'PY' || fail "the map covers the Places title bar"
+import sys
+from PIL import Image
+image = Image.open(sys.argv[1]).convert("RGB")
+w, h = image.size
+pixel = image.getpixel((w // 2, int(h * 0.055)))
+print("title bar pixel", pixel)
+sys.exit(0 if min(pixel) > 225 else 1)
+PY
 tap places "Grid"
 sleep 2
 dump places

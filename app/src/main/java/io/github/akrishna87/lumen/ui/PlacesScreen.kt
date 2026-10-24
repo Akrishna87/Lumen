@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.contentDescription
@@ -109,7 +110,8 @@ fun PlacesScreen(state: LibraryState, onBack: () -> Unit, onPlace: (AlbumRef) ->
                 if (canRead) "Photos taken with location turned on in the camera appear here."
                 else "Allow Lumen to access photo locations (in Android's settings for Lumen) to see your places.",
             )
-            view == 0 -> Box(Modifier.fillMaxSize().semantics { contentDescription = "Map of ${Format.plural(places.size, "place")}" }) {
+            // osmdroid draws its tiles past the map's own edges, over the title bar, unless clipped.
+            view == 0 -> Box(Modifier.fillMaxSize().clipToBounds().semantics { contentDescription = "Map of ${Format.plural(places.size, "place")}" }) {
                 PlacesMap(places) { onPlace(AlbumRef.place(it)) }
             }
             else -> LazyColumn(Modifier.fillMaxSize()) {
