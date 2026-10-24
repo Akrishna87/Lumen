@@ -294,9 +294,46 @@ sleep 2
 dump trip
 shot 18-trip
 has trip 'text="1 Photo"' || fail "the photo added to Trip isn't in the album"
-tap trip "Back"
-sleep 1
 echo "PASS: making an album and adding a photo to it"
+
+echo "--- Renaming, removing from and deleting an album"
+tap trip "Album Options"
+sleep 2
+dump options
+tap options "Rename Album"
+sleep 2
+adb shell input text Holiday # the old name is selected, so this replaces it
+sleep 1
+dump naming
+tap naming "Save"
+sleep 2
+dump trip
+has trip 'text="Holiday"' || fail "renaming the album didn't change its title"
+tap trip "Select"
+sleep 1
+dump trip
+tap trip "Photo, "
+sleep 1
+dump trip
+tap trip "More"
+sleep 2
+dump more
+tap more "Remove from Album"
+sleep 2
+dump trip
+has trip 'text="No Photos or Videos"' || fail "Remove from Album left the photo in the album"
+tap trip "Album Options"
+sleep 2
+dump options
+tap options "Delete Album"
+sleep 2
+dump confirm
+tap confirm "Delete Album"
+sleep 2
+dump albums
+has albums 'text="My Albums"' || fail "deleting the album didn't go back to Albums"
+has albums '"Holiday' && fail "the deleted album is still in My Albums"
+echo "PASS: renaming an album, removing a photo from it, and deleting it (not its photos)"
 
 echo "--- Hiding"
 dump albums
