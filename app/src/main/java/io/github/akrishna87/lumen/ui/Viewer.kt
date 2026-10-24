@@ -372,7 +372,7 @@ fun Viewer(
         }
         if (copied) {
             LaunchedEffect(Unit) {
-                delay(1500)
+                delay(2500) // as long as the app's other notes
                 copied = false
             }
             Text(

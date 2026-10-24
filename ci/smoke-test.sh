@@ -671,8 +671,7 @@ dump live
 shot 33-live-text
 has live 'content-desc="[^"]*receipt' || fail "Live Text didn't outline the photo's text"
 tap live "Copy All"
-sleep 1
-dump copied
+dump copied # straight away: the note shows for 2.5 s
 has copied 'text="Copied"' || fail "Copy All didn't copy the text"
 echo "PASS: search finds words inside photos, and Live Text outlines and copies them"
 
