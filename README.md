@@ -40,6 +40,10 @@ and keeps your favourites.
   Like albums on iPhone they're lists inside Lumen, so no photo is copied. An album's
   **•••** renames or deletes it (deleting an album never deletes its photos), and
   **••• → Remove from Album** takes photos out.
+- **Duplicates** (under Utilities): photos that are exact copies of each other (same
+  size and same picture). **Merge** keeps the oldest, gives it any heart and albums the
+  others had, and moves the rest to Recently Deleted (Android asks first). Near-copies,
+  like a resized or re-saved photo, aren't found.
 - **Hidden**: **••• → Hide** takes photos out of Lumen's Library, albums and Search
   into the **Hidden** album under Utilities, which opens only after your fingerprint,
   face or screen lock (on a phone with no screen lock it just opens). It locks again
@@ -132,6 +136,7 @@ instant. Requires Android 8.0 or newer.
 | `ui/ForYouScreen.kt`, `ui/Slideshow.kt` | For You, and the memory slideshow |
 | `Places.kt` | Reads photo locations (cached) and groups them into places |
 | `ui/PlacesScreen.kt` | Places: the map and the list |
+| `Duplicates.kt`, `ui/DuplicatesScreen.kt` | Finding and merging duplicates |
 | `ui/AlbumSheets.kt` | Add to Album, and the New / Rename Album dialog |
 | `ui/Components.kt` | iOS-style controls |
 | `ui/Theme.kt` | iOS colours and text styles in Inter |
@@ -148,8 +153,8 @@ GitHub Actions builds it (`.github/workflows/lumen-apk.yml`) on every push:
    across a row), the press-and-hold preview, the viewer (favourite, Info, a video
    playing, deleting), Albums, Favorites, making an album and adding to it, hiding
    and unhiding, Places (map and list), For You and a slideshow (that it moves, pauses and closes), editing (it checks the saved copy's pixels: turned, black and
-   white, dated like the original), Search and dark mode. Last, it sets a PIN and checks Hidden won't
-   open without it. Screenshots are saved
+   white, dated like the original), Search and dark mode. Then it sets a PIN and checks Hidden won't
+   open without it, and finally copies a photo and checks Duplicates finds and merges it. Screenshots are saved
    with the build.
 3. **publish**: replaces the `lumen-latest` release with the new APK and the
    screenshots.

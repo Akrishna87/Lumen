@@ -582,6 +582,28 @@ has relocked 'content-desc="Photo, ' && fail "Hidden stayed open after Lumen wen
 adb shell locksettings clear --old 1111 || true
 echo "PASS: with a screen lock, Hidden opens only after it, and locks again in the background"
 
+echo "--- Duplicates"
+adb push "$MEDIA/camera/PXL_smoke_03.jpg" "/sdcard/DCIM/Camera/PXL_smoke_03 copy.jpg" > /dev/null
+adb shell content call --uri content://media --method scan_volume --arg external_primary > /dev/null 2>&1 || true
+sleep 4
+open_albums
+adb shell input swipe 540 1700 540 500 300 # down to Utilities
+sleep 1
+dump albums
+tap albums "Duplicates"
+sleep 5
+dump duplicates
+shot 31-duplicates
+has duplicates 'text="2 Copies"' || fail "Duplicates didn't find the copied photo"
+tap duplicates "Merge"
+sleep 2
+dump allow
+tap allow "Allow"
+sleep 4
+dump duplicates
+has duplicates 'text="No Duplicates"' || fail "merging didn't remove the copy"
+echo "PASS: Duplicates finds an identical copy, and merging keeps one"
+
 if crashed; then
   adb logcat -d > "$OUT/logcat.txt"
   fail "the app crashed (see logcat.txt)"

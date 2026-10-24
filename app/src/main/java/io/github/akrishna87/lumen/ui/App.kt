@@ -137,6 +137,7 @@ sealed interface Route {
     data class AlbumDetail(val album: AlbumRef, val backLabel: String) : Route
     data object AllAlbums : Route
     data object Places : Route
+    data object Duplicates : Route
 }
 
 /** What the full-screen viewer is showing. */
@@ -262,6 +263,20 @@ class GalleryActions(
                 },
             ),
         )
+    }
+
+    /**
+     * Keeps the oldest of a set of duplicates and deletes the rest (after Android's confirmation),
+     * first giving the kept photo any heart and albums the others had.
+     */
+    fun merge(copies: List<MediaItem>) {
+        val keep = copies.minByOrNull { it.id } ?: return
+        val rest = copies - keep
+        if (rest.any { it.id in vm.favorites.value }) vm.setFavorite(listOf(keep), true)
+        vm.state.value.userAlbums
+            .filter { entry -> rest.any { it.id in entry.album.ids } }
+            .forEach { vm.addToAlbum(it.album.id, listOf(keep)) }
+        delete(rest)
     }
 
     /** Puts the photo on the clipboard, for pasting into a chat or a note. */
@@ -456,6 +471,11 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                             onBack = { stacks[t].removeAt(stacks[t].lastIndex) },
                             onPlace = { push(Route.AlbumDetail(it, "Places")) },
                         )
+                        Route.Duplicates -> DuplicatesScreen(
+                            state = state,
+                            actions = actions,
+                            onBack = { stacks[t].removeAt(stacks[t].lastIndex) },
+                        )
                         Route.AllAlbums -> AllAlbumsScreen(
                             state = state,
                             onBack = { stacks[t].removeAt(stacks[t].lastIndex) },
@@ -483,6 +503,7 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 onNewAlbum = { actions.newAlbum() },
                                 onHidden = openHidden,
                                 onPlaces = { push(Route.Places) },
+                                onDuplicates = { push(Route.Duplicates) },
                             )
                             AppTab.SEARCH -> SearchScreen(
                                 state = state,
