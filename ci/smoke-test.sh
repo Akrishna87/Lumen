@@ -511,6 +511,16 @@ tap viewer "Edit"
 sleep 3
 dump editor
 shot 23-editor
+# The editor is black even in light mode, so its status bar icons must be white, not black on black.
+python3 - "$OUT/23-editor.png" <<'PY' || fail "the editor's status bar icons can't be seen"
+import sys
+from PIL import Image
+image = Image.open(sys.argv[1]).convert("L")
+w, h = image.size
+brightest = max(image.crop((0, 0, w, int(h * 0.03))).getdata())
+print("brightest status bar pixel in the editor", brightest)
+sys.exit(0 if brightest > 200 else 1)
+PY
 tap editor "Filters"
 sleep 3
 dump editor
