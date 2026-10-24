@@ -54,6 +54,14 @@ and keeps your favourites.
   The title shows when it was taken ("Today", "Yesterday", "Monday", "March 3").
   A filmstrip of thumbnails sits above the toolbar: **Share**, **Favorite**,
   **Info** and **Delete**.
+  - **Edit** (photos only, not GIFs, Recently Deleted or Hidden) opens Photos'
+    editor on black: **Adjust** (brightness, contrast, saturation, warmth, on a
+    ruler you slide), **Filters** (Vivid, Vivid Warm, Vivid Cool, Dramatic, Mono,
+    Silvertone, Noir) and **Crop** (rotate, straighten, and Square, 4:3 or 16:9,
+    centred; no free-form crop handles). **Done** saves a **new copy** named
+    `…_edited.jpg` next to the original (or in Pictures/Lumen) with the original's
+    date and camera details, then shows it. The original is never changed. The copy
+    isn't added to your albums and doesn't keep the original's heart.
   - **Info** shows the date, the camera, lens, file name, megapixels, resolution,
     size and format, and the exposure (ISO, focal length, ev, aperture, shutter
     speed) read from the photo's EXIF data.
@@ -107,6 +115,8 @@ instant. Requires Android 8.0 or newer.
 | `ui/Viewer.kt` | Full-screen viewer: zoom, swipe to close, video, filmstrip, Info |
 | `ui/PhotoGrid.kt` | The photo grid, thumbnails, pinch to resize, selection, drag to select |
 | `ui/Preview.kt` | The press-and-hold preview and its menu |
+| `Editing.kt` | The editor's filters and adjustments, and saving the edited copy |
+| `ui/Editor.kt` | The editor screen |
 | `ui/AlbumSheets.kt` | Add to Album, and the New / Rename Album dialog |
 | `ui/Components.kt` | iOS-style controls |
 | `ui/Theme.kt` | iOS colours and text styles in Inter |
@@ -122,7 +132,8 @@ GitHub Actions builds it (`.github/workflows/lumen-apk.yml`) on every push:
    screen, the Library, Months and Years, selecting (by tapping and by dragging
    across a row), the press-and-hold preview, the viewer (favourite, Info, a video
    playing, deleting), Albums, Favorites, making an album and adding to it, hiding
-   and unhiding, Search and dark mode. Last, it sets a PIN and checks Hidden won't
+   and unhiding, editing (it checks the saved copy's pixels: turned, black and
+   white, dated like the original), Search and dark mode. Last, it sets a PIN and checks Hidden won't
    open without it. Screenshots are saved
    with the build.
 3. **publish**: replaces the `lumen-latest` release with the new APK and the

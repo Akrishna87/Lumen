@@ -62,6 +62,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.shape.CircleShape
 import io.github.akrishna87.lumen.Access
 import io.github.akrishna87.lumen.Format
 import io.github.akrishna87.lumen.GalleryViewModel
@@ -337,6 +340,9 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
     var focusId by remember { mutableStateOf<Long?>(null) }
     // Press-and-hold preview: the photo and the album it was pressed in.
     var preview by remember { mutableStateOf<Pair<AlbumRef, MediaItem>?>(null) }
+    // An edited copy waiting to appear in the library, so the viewer can switch to it.
+    var editedCopy by remember { mutableStateOf<Long?>(null) }
+    var note by remember { mutableStateOf<String?>(null) }
     val selection = remember { Selection() }
 
     // The Library's own state lives here so it's kept while browsing albums or the viewer.
@@ -488,6 +494,11 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                     favorites = favorites,
                     actions = actions,
                     onCurrentChange = { focusId = it },
+                    onEdited = { id ->
+                        vm.refresh()
+                        editedCopy = id
+                        note = if (id != null) "Saved as a copy" else "Couldn\u2019t save the edited photo"
+                    },
                     onClose = {
                         viewer = null
                         focusId = null
@@ -495,6 +506,33 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                     },
                 )
             }
+        }
+
+        // Open the copy once the library has it; if it's slow to appear, stay put (the note says it was saved).
+        LaunchedEffect(editedCopy, state) {
+            val id = editedCopy ?: return@LaunchedEffect
+            if (state.items.any { it.id == id }) {
+                editedCopy = null
+                focusId = id
+                viewer = ViewerTarget(AlbumRef(AlbumRef.RECENTS, "Library"), id)
+            }
+        }
+        LaunchedEffect(editedCopy) {
+            delay(5_000)
+            editedCopy = null
+        }
+        note?.let { text ->
+            LaunchedEffect(text) {
+                delay(2_500)
+                note = null
+            }
+            Text(
+                text,
+                style = AppleType.subheadline.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White,
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 52.dp)
+                    .clip(CircleShape).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 16.dp, vertical = 8.dp),
+            )
         }
 
         preview?.let { (album, item) ->

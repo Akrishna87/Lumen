@@ -2,7 +2,7 @@
 # Runs inside the Android emulator job: installs the APK, puts test photos and a video on the
 # "phone", and checks the welcome screen, the Library (All Photos, Months, Years), the viewer
 # (favourite, info, video playback, deleting), press-and-hold previews, drag-selecting, Albums,
-# your own albums, hiding (and the Hidden album's lock), Search and dark mode.
+# your own albums, hiding (and the Hidden album's lock), editing a copy, Search and dark mode.
 # Usage: smoke-test.sh <apk> <media dir> <output dir>
 set -euo pipefail
 
@@ -418,6 +418,58 @@ sleep 2
 dump library
 has library '10 Photos, 1 Video' || fail "the Library still counts the deleted photo"
 echo "PASS: deleting moves on to the next photo and leaves the library"
+
+echo "--- Editing saves a copy"
+dump library
+tap library "Photo, " last
+sleep 3
+dump viewer
+tap viewer "Info"
+sleep 2
+dump info
+ORIG=$(grep -o 'text="PXL_smoke_[0-9]*\.jpg"' "$OUT/info.xml" | head -1 | cut -d'"' -f2) || true
+[ -n "$ORIG" ] || fail "couldn't read which photo is open"
+COPY="${ORIG%.jpg}_edited.jpg"
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+dump viewer
+tap viewer "Edit"
+sleep 3
+dump editor
+shot 23-editor
+tap editor "Filters"
+sleep 3
+dump editor
+tap editor "Mono"
+sleep 1
+tap editor "Crop"
+sleep 1
+dump editor
+tap editor "Rotate"
+sleep 2
+shot 24-edited
+dump editor
+tap editor "Done"
+sleep 8
+dump copy
+shot 25-copy
+tap copy "Info"
+sleep 2
+dump copyinfo
+has copyinfo "text=\"$COPY\"" || fail "the viewer didn't switch to the edited copy ($COPY)"
+has copyinfo 'Pixel Smoke' || fail "the edited copy lost the camera details"
+adb shell content query --uri content://media/external/images/media \
+  --projection _display_name:width:height:datetaken:date_modified:relative_path > "$OUT/media-after-edit.txt"
+REL=$(grep "_display_name=$COPY," "$OUT/media-after-edit.txt" | grep -o 'relative_path=[^,]*' | cut -d= -f2) || true
+adb pull "/sdcard/$REL$COPY" "$OUT/edited.jpg" > /dev/null || fail "couldn't fetch the edited copy from /sdcard/$REL$COPY"
+python3 "$HERE/check_edit.py" "$OUT/media-after-edit.txt" "$ORIG" "$COPY" "$OUT/edited.jpg" || fail "the edited copy isn't right"
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+adb shell input keyevent KEYCODE_BACK
+sleep 2
+dump library
+has library '11 Photos, 1 Video' || fail "the edited copy isn't in the Library"
+echo "PASS: editing saves a turned, black-and-white copy with the original's date and camera, and opens it"
 
 echo "--- With a screen lock, Hidden asks for it"
 dump library

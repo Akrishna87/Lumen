@@ -119,6 +119,8 @@ fun Viewer(
     onCurrentChange: (Long) -> Unit,
     /** The viewer has finished closing (after shrinking back into its thumbnail). */
     onClose: () -> Unit,
+    /** An edited copy was saved (its id), or saving failed (null). */
+    onEdited: (Long?) -> Unit,
 ) {
     val apple = LocalApple.current
     val context = LocalContext.current
@@ -155,6 +157,7 @@ fun Viewer(
     var zoomScale by remember { mutableFloatStateOf(1f) }
     var zoomOffset by remember { mutableStateOf(Offset.Zero) }
     var showInfo by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<MediaItem?>(null) }
 
     // One player for the whole viewer; it follows whichever video is on screen.
     val player = remember { ExoPlayer.Builder(context).build() }
@@ -346,6 +349,12 @@ fun Viewer(
                 subtitle = Format.time(current.dateTime),
                 onBack = { close() },
                 trailing = {
+                    // Not for videos, GIFs (saving would flatten them), the trash, or Hidden (the copy
+                    // would land in the Library for anyone to see).
+                    val album = target.album
+                    if (!current.isVideo && !current.isAnimated && !album.isTrash && !album.isHidden) {
+                        BarText("Edit") { editing = current }
+                    }
                     if (current.isVideo) BarIcon(if (muted) AppIcons.Muted else AppIcons.Speaker, if (muted) "Unmute" else "Mute") { muted = !muted }
                     if (!target.album.isTrash) BarIcon(AppIcons.Ellipsis, "More") { actions.more(listOf(current), target.album) }
                 },
@@ -387,6 +396,17 @@ fun Viewer(
             ) {
                 InfoPanel(current, onDone = { showInfo = false })
             }
+        }
+
+        editing?.let { item ->
+            Editor(
+                item = item,
+                onCancel = { editing = null },
+                onSaved = { id ->
+                    editing = null
+                    onEdited(id)
+                },
+            )
         }
     }
 }
