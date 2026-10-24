@@ -110,8 +110,10 @@ fun Editor(item: MediaItem, onCancel: () -> Unit, onSaved: (Long?) -> Unit) {
         bars?.isAppearanceLightStatusBars = false
         bars?.isAppearanceLightNavigationBars = false
         onDispose {
-            if (lightStatus != null) bars.isAppearanceLightStatusBars = lightStatus
-            if (lightNavigation != null) bars.isAppearanceLightNavigationBars = lightNavigation
+            if (bars != null && lightStatus != null && lightNavigation != null) {
+                bars.isAppearanceLightStatusBars = lightStatus
+                bars.isAppearanceLightNavigationBars = lightNavigation
+            }
         }
     }
 
