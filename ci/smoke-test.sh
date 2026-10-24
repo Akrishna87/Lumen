@@ -59,6 +59,15 @@ tap() { # tap <dump name> <text> [first|last]
 }
 has() { grep -qi "$2" "$OUT/$1.xml"; } # has <dump name> <grep pattern>
 crashed() { adb logcat -d | grep -A3 "FATAL EXCEPTION" | grep -q "$PKG"; }
+# Goes to the Albums tab's main screen. The tab remembers the album you were in, as on iOS, so
+# back out of it if needed.
+open_albums() {
+  dump nav
+  tap nav "Albums" last
+  sleep 2
+  dump nav
+  if has nav 'content-desc="Back"'; then tap nav "Back"; sleep 2; fi
+}
 
 adb wait-for-device
 adb install -r "$APK"
@@ -247,9 +256,7 @@ adb shell cmd uimode night no || true
 
 echo "--- Your own albums"
 sleep 2
-dump library
-tap library "Albums"
-sleep 2
+open_albums
 dump albums
 tap albums "New Album"
 sleep 2
@@ -279,9 +286,7 @@ dump picker
 shot 17-add-to-album
 tap picker "Trip"
 sleep 2
-dump library
-tap library "Albums"
-sleep 2
+open_albums
 dump albums
 tap albums "Trip"
 sleep 2
@@ -310,8 +315,7 @@ tap more "Hide"
 sleep 2
 dump library
 has library '10 Photos, 1 Video' || fail "hiding a photo didn't take it out of the Library"
-tap library "Albums"
-sleep 2
+open_albums
 adb shell input swipe 540 1700 540 500 300 # down to Utilities
 sleep 1
 dump albums
@@ -392,9 +396,7 @@ tap more "Hide"
 sleep 2
 adb shell locksettings set-pin 1111
 sleep 1
-dump library
-tap library "Albums"
-sleep 2
+open_albums
 adb shell input swipe 540 1700 540 500 300
 sleep 1
 dump albums
