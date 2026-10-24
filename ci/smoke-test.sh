@@ -2,7 +2,7 @@
 # Runs inside the Android emulator job: installs the APK, puts test photos and a video on the
 # "phone", and checks the welcome screen, the Library (All Photos, Months, Years), the viewer
 # (favourite, info, video playback, deleting), press-and-hold previews, drag-selecting, Albums,
-# your own albums, hiding (and the Hidden album's lock), editing a copy, Search (including text
+# your own albums, Library filters, Undo, hiding (and the Hidden album's lock), editing a copy, Search (including text
 # inside photos, and Live Text) and dark mode.
 # Usage: smoke-test.sh <apk> <media dir> <output dir>
 set -euo pipefail
@@ -432,23 +432,64 @@ has albums 'text="My Albums"' || fail "deleting the album didn't go back to Albu
 has albums '"Holiday' && fail "the deleted album is still in My Albums"
 echo "PASS: renaming an album, removing a photo from it, and deleting it (not its photos)"
 
-echo "--- Hiding"
+echo "--- Library filters"
 dump albums
 tap albums "Library"
 sleep 2
 dump library
-tap library "Select"
+tap library "Filter"
 sleep 1
-dump select
-tap select "Photo, " last
-sleep 1
-dump select
-tap select "More"
-sleep 2
-dump more
-tap more "Hide"
+dump filter
+tap filter "Videos"
 sleep 2
 dump library
+shot 18b-filter-videos
+has library 'content-desc="Showing Videos"' || fail "the Library doesn't say it's showing only videos"
+has library 'text="1 Video"' || fail "the Videos filter doesn't show just the video"
+has library 'content-desc="Photo, ' && fail "the Videos filter still shows photos"
+tap library "Filter"
+sleep 1
+dump filter
+tap filter "Favorites"
+sleep 2
+dump library
+has library 'text="1 Photo"' || fail "the Favorites filter doesn't show just the favourited photo"
+tap library "Showing Favorites"
+sleep 2
+dump library
+has library '11 Photos, 1 Video' || fail "clearing the filter didn't show everything again"
+echo "PASS: filtering the Library to videos and favourites, and back to everything"
+
+hide_last_photo() {
+  dump library
+  tap library "Select"
+  sleep 1
+  dump select
+  tap select "Photo, " last
+  sleep 1
+  dump select
+  tap select "More"
+  sleep 2
+  dump more
+  tap more "Hide"
+  sleep 1
+  dump library
+}
+
+echo "--- Undo"
+hide_last_photo
+has library '10 Photos, 1 Video' || fail "hiding a photo didn't take it out of the Library"
+has library 'text="Hidden 1 Photo"' || fail "no Undo banner after hiding"
+shot 18c-undo
+tap library "Undo"
+sleep 2
+dump library
+has library '11 Photos, 1 Video' || fail "Undo didn't bring the hidden photo back"
+echo "PASS: Undo takes back hiding a photo"
+
+echo "--- Hiding"
+sleep 5 # let the banner go
+hide_last_photo
 has library '10 Photos, 1 Video' || fail "hiding a photo didn't take it out of the Library"
 open_albums
 adb shell input swipe 540 1700 540 500 300 # down to Utilities
