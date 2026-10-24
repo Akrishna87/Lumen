@@ -246,6 +246,43 @@ has search 'text="Screenshots"' || fail "searching 'Screen' didn't suggest the S
 has search '[0-9] Results' || fail "searching 'Screen' didn't find the screenshots"
 echo "PASS: search finds albums and photos"
 
+echo "--- For You"
+dump search
+tap search "For You"
+sleep 3
+dump foryou
+shot 26-for-you
+MONTH="$(date +%B) $(date +%Y)"
+has foryou 'content-desc="Memory, On This Day"' || fail "For You has no On This Day memory (a test photo is from this day last year)"
+has foryou "content-desc=\"Memory, $MONTH\"" || fail "For You has no memory for $MONTH"
+tap foryou "Memory, $MONTH"
+# The slideshow never stops moving, so read it from screenshots, not the screen tree.
+sleep 2
+shot 27-slideshow-a
+sleep 4
+shot 27-slideshow-b
+python3 - "$OUT/27-slideshow-a.png" "$OUT/27-slideshow-b.png" <<'PY' || fail "the slideshow isn't moving"
+import sys
+from PIL import Image, ImageChops, ImageStat
+a, b = (Image.open(p).convert("L") for p in sys.argv[1:3])
+diff = ImageStat.Stat(ImageChops.difference(a, b)).mean[0]
+print(f"slideshow frames differ by {diff:.1f}")
+sys.exit(0 if diff > 2 else 1)
+PY
+adb shell input tap 540 1200 # pause and show the controls
+sleep 2
+dump slideshow
+shot 28-slideshow-controls
+has slideshow 'content-desc="Play"' || fail "tapping the slideshow didn't pause it"
+has slideshow 'text="Add Music"' || fail "the slideshow has no Add Music button"
+tap slideshow "Close"
+sleep 2
+dump foryou
+has foryou 'text="Memories"' || fail "closing the slideshow didn't go back to For You"
+echo "PASS: For You shows memories (including On This Day), and they play as slideshows"
+tap foryou "Search" # back where the dark-mode step expects to be
+sleep 2
+
 echo "--- Dark mode"
 adb shell cmd uimode night yes || true
 sleep 3

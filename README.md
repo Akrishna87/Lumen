@@ -66,6 +66,11 @@ and keeps your favourites.
     size and format, and the exposure (ISO, focal length, ev, aperture, shutter
     speed) read from the photo's EXIF data.
   - **Videos** play in place with a scrubber, play/pause and a mute button.
+- **For You**: **Memories**, made from your photos: **On This Day** (this date in
+  years past) and each recent month with at least six photos. A memory plays as a
+  full-screen **slideshow**, each photo slowly zooming and cross-fading to the next.
+  Tap it to pause, close, or **Add Music**: pick a song from your phone, and Lumen
+  remembers it for later slideshows.
 - **Albums**: **My Albums** (Recents, Favorites, your own albums, then each folder like Camera,
   Screenshots or WhatsApp Images) as two rows of covers that scroll sideways, with
   **See All**. **Media Types** has Videos, Screenshots, Panoramas and Animated
@@ -117,6 +122,8 @@ instant. Requires Android 8.0 or newer.
 | `ui/Preview.kt` | The press-and-hold preview and its menu |
 | `Editing.kt` | The editor's filters and adjustments, and saving the edited copy |
 | `ui/Editor.kt` | The editor screen |
+| `Memories.kt` | Builds the For You memories |
+| `ui/ForYouScreen.kt`, `ui/Slideshow.kt` | For You, and the memory slideshow |
 | `ui/AlbumSheets.kt` | Add to Album, and the New / Rename Album dialog |
 | `ui/Components.kt` | iOS-style controls |
 | `ui/Theme.kt` | iOS colours and text styles in Inter |
@@ -132,7 +139,7 @@ GitHub Actions builds it (`.github/workflows/lumen-apk.yml`) on every push:
    screen, the Library, Months and Years, selecting (by tapping and by dragging
    across a row), the press-and-hold preview, the viewer (favourite, Info, a video
    playing, deleting), Albums, Favorites, making an album and adding to it, hiding
-   and unhiding, editing (it checks the saved copy's pixels: turned, black and
+   and unhiding, For You and a slideshow (that it moves, pauses and closes), editing (it checks the saved copy's pixels: turned, black and
    white, dated like the original), Search and dark mode. Last, it sets a PIN and checks Hidden won't
    open without it. Screenshots are saved
    with the build.

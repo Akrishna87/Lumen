@@ -70,6 +70,7 @@ import io.github.akrishna87.lumen.Format
 import io.github.akrishna87.lumen.GalleryViewModel
 import io.github.akrishna87.lumen.LibraryState
 import io.github.akrishna87.lumen.MediaItem
+import io.github.akrishna87.lumen.Memory
 import io.github.akrishna87.lumen.HiddenLock
 import io.github.akrishna87.lumen.UserAlbum
 import androidx.fragment.app.FragmentActivity
@@ -134,6 +135,14 @@ sealed interface Route {
 
 /** What the full-screen viewer is showing. */
 data class ViewerTarget(val album: AlbumRef, val startId: Long)
+
+/** The tab bar's tabs, in order, as in Photos on iPhone. */
+enum class AppTab(val label: String, val icon: ImageVector) {
+    LIBRARY("Library", AppIcons.Library),
+    FOR_YOU("For You", AppIcons.ForYou),
+    ALBUMS("Albums", AppIcons.Albums),
+    SEARCH("Search", AppIcons.Search),
+}
 
 data class SheetRequest(val message: String?, val actions: List<SheetAction>)
 
@@ -334,12 +343,14 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
     }
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val stacks = remember { List(3) { mutableStateListOf<Route>() } }
+    val stacks = remember { List(AppTab.entries.size) { mutableStateListOf<Route>() } }
     var viewer by remember { mutableStateOf<ViewerTarget?>(null) }
     // The photo open in the viewer, which the grid underneath keeps in view.
     var focusId by remember { mutableStateOf<Long?>(null) }
     // Press-and-hold preview: the photo and the album it was pressed in.
     var preview by remember { mutableStateOf<Pair<AlbumRef, MediaItem>?>(null) }
+    // The memory playing as a slideshow.
+    var slideshow by remember { mutableStateOf<Memory?>(null) }
     // An edited copy waiting to appear in the library, so the viewer can switch to it.
     var editedCopy by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
@@ -439,8 +450,8 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                             onBack = { stacks[t].removeAt(stacks[t].lastIndex) },
                             onAlbum = { push(Route.AlbumDetail(it, "My Albums")) },
                         )
-                        null -> when (t) {
-                            0 -> LibraryScreen(
+                        null -> when (AppTab.entries[t]) {
+                            AppTab.LIBRARY -> LibraryScreen(
                                 state = state,
                                 favorites = favorites,
                                 ui = library,
@@ -450,7 +461,8 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 onPreview = { showPreview(AlbumRef(AlbumRef.RECENTS, "Library"), it) },
                                 focusId = focusId,
                             )
-                            1 -> AlbumsScreen(
+                            AppTab.FOR_YOU -> ForYouScreen(state = state, onPlay = { slideshow = it })
+                            AppTab.ALBUMS -> AlbumsScreen(
                                 state = state,
                                 favorites = favorites,
                                 access = access,
@@ -460,7 +472,7 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                                 onNewAlbum = { actions.newAlbum() },
                                 onHidden = openHidden,
                             )
-                            else -> SearchScreen(
+                            AppTab.SEARCH -> SearchScreen(
                                 state = state,
                                 favorites = favorites,
                                 onAlbum = { push(Route.AlbumDetail(it, "Search")) },
@@ -475,7 +487,7 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                 SelectionToolbar(state, favorites, selection, actions, album = (stacks[tab].lastOrNull() as? Route.AlbumDetail)?.album)
             } else {
                 TabBar(
-                    tabs = listOf(TabItem("Library", AppIcons.Library), TabItem("Albums", AppIcons.Albums), TabItem("Search", AppIcons.Search)),
+                    tabs = AppTab.entries.map { TabItem(it.label, it.icon) },
                     selected = tab,
                     onSelect = { i ->
                         // Tapping the current tab again goes back to its first screen, as on iOS.
@@ -533,6 +545,10 @@ fun GalleryApp(vm: GalleryViewModel = viewModel()) {
                 modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 52.dp)
                     .clip(CircleShape).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 16.dp, vertical = 8.dp),
             )
+        }
+
+        slideshow?.let { memory ->
+            Slideshow(memory, onClose = { slideshow = null })
         }
 
         preview?.let { (album, item) ->

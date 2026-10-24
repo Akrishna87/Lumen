@@ -3,6 +3,7 @@
 Usage: make_media.py <output dir>
 """
 import colorsys
+import datetime
 import os
 import sys
 
@@ -39,9 +40,21 @@ def exif():
     return e
 
 
+def a_year_ago():
+    """Today's date and time a year back, for the "On This Day" memory."""
+    now = datetime.datetime.now()
+    try:
+        return now.replace(year=now.year - 1)
+    except ValueError:  # 29 February
+        return now.replace(year=now.year - 1, day=28)
+
+
 for i in range(8):
+    e = exif()
+    if i == 0:  # taken on this day last year
+        e.get_ifd(0x8769)[0x9003] = a_year_ago().strftime("%Y:%m:%d %H:%M:%S")  # DateTimeOriginal
     picture((1600, 1200) if i % 3 else (1200, 1600), i / 8).save(
-        os.path.join(out, "camera", f"PXL_smoke_{i + 1:02d}.jpg"), quality=88, exif=exif())
+        os.path.join(out, "camera", f"PXL_smoke_{i + 1:02d}.jpg"), quality=88, exif=e)
 for i in range(2):
     picture((1080, 2400), 0.55 + i / 10).save(os.path.join(out, "screenshots", f"Screenshot_smoke_{i + 1}.png"))
 picture((4200, 1200), 0.08).save(os.path.join(out, "panoramas", "PANO_smoke.jpg"), quality=85)
