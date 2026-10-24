@@ -33,7 +33,20 @@ and keeps your favourites.
   the grid to pick a whole run of them (it scrolls when you reach the top or bottom).
   Share, favourite or delete them from the toolbar.
 - **Press and hold** a photo for a larger preview over the blurred app, with a menu:
-  **Copy**, **Share**, **Favorite** and **Delete**. Tap the preview to open the photo.
+  **Copy**, **Share**, **Favorite**, **Add to Album**, **Hide** and **Delete**. Tap the
+  preview to open the photo.
+- **Your own albums**: tap **+** on Albums to make one, then add photos from **•••**
+  (in Select mode, in the viewer, or in the press-and-hold menu) → **Add to Album**.
+  Like albums on iPhone they're lists inside Lumen, so no photo is copied. An album's
+  **•••** renames or deletes it (deleting an album never deletes its photos), and
+  **••• → Remove from Album** takes photos out.
+- **Hidden**: **••• → Hide** takes photos out of Lumen's Library, albums and Search
+  into the **Hidden** album under Utilities, which opens only after your fingerprint,
+  face or screen lock (on a phone with no screen lock it just opens). It locks again
+  when you leave it or Lumen goes to the background. Hidden photos stay where they are
+  on the phone, so **other apps (Google Photos, Files…) still show them**; this only
+  hides them inside Lumen. They're also left out of Recently Deleted, which isn't
+  locked.
 - **The viewer**: a photo grows out of its thumbnail when you open it, and shrinks back
   into its place in the grid when you close it (the grid scrolls to the photo you
   swiped to). Swipe between photos, pinch or double-tap to zoom, and drag down
@@ -45,7 +58,7 @@ and keeps your favourites.
     size and format, and the exposure (ISO, focal length, ev, aperture, shutter
     speed) read from the photo's EXIF data.
   - **Videos** play in place with a scrubber, play/pause and a mute button.
-- **Albums**: **My Albums** (Recents, Favorites, then each folder like Camera,
+- **Albums**: **My Albums** (Recents, Favorites, your own albums, then each folder like Camera,
   Screenshots or WhatsApp Images) as two rows of covers that scroll sideways, with
   **See All**. **Media Types** has Videos, Screenshots, Panoramas and Animated
   (GIFs). On Android 11+, **Recently Deleted** shows deleted items and the days left
@@ -84,6 +97,8 @@ instant. Requires Android 8.0 or newer.
 | `Media.kt` | Photo/video model, the MediaStore scan (and trash), albums, months, formatting |
 | `GalleryViewModel.kt` | Library state, permission level, refresh on changes, delete/recover requests |
 | `Favorites.kt` | Remembers which photos have a heart |
+| `Collections.kt` | Your own albums and the hidden photos, kept in the app |
+| `HiddenLock.kt` | The fingerprint / face / screen-lock check for Hidden |
 | `Thumbnails.kt` | Grid thumbnails from the media library, with a memory cache |
 | `ui/App.kt` | Welcome screen, tab bar and navigation, share/delete actions, selection toolbar |
 | `ui/LibraryScreen.kt` | Library: All Photos, Months and Years |
@@ -92,6 +107,7 @@ instant. Requires Android 8.0 or newer.
 | `ui/Viewer.kt` | Full-screen viewer: zoom, swipe to close, video, filmstrip, Info |
 | `ui/PhotoGrid.kt` | The photo grid, thumbnails, pinch to resize, selection, drag to select |
 | `ui/Preview.kt` | The press-and-hold preview and its menu |
+| `ui/AlbumSheets.kt` | Add to Album, and the New / Rename Album dialog |
 | `ui/Components.kt` | iOS-style controls |
 | `ui/Theme.kt` | iOS colours and text styles in Inter |
 | `ui/AppIcons.kt` | SF Symbols-style icons |
@@ -105,7 +121,9 @@ GitHub Actions builds it (`.github/workflows/lumen-apk.yml`) on every push:
    panorama and a video, puts them on an Android 14 emulator, and checks the welcome
    screen, the Library, Months and Years, selecting (by tapping and by dragging
    across a row), the press-and-hold preview, the viewer (favourite, Info, a video
-   playing, deleting), Albums, Favorites, Search and dark mode. Screenshots are saved
+   playing, deleting), Albums, Favorites, making an album and adding to it, hiding
+   and unhiding, Search and dark mode. Last, it sets a PIN and checks Hidden won't
+   open without it. Screenshots are saved
    with the build.
 3. **publish**: replaces the `lumen-latest` release with the new APK and the
    screenshots.

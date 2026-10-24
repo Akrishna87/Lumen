@@ -64,6 +64,7 @@ import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -128,7 +129,11 @@ fun Viewer(
     // away), minus anything deleted (or, in Recently Deleted, recovered) since.
     val snapshot = remember(target) { target.album.items(state, favorites) }
     val present = remember(state, target) {
-        (if (target.album.isTrash) state.trash else state.items).mapTo(HashSet()) { it.id }
+        when {
+            target.album.isTrash -> state.trash
+            target.album.isHidden -> state.hidden
+            else -> state.items
+        }.mapTo(HashSet()) { it.id }
     }
     // Deleted items leave like in Photos: the photo shrinks and fades, then the next one slides in.
     var hidden by remember { mutableStateOf(emptySet<Long>()) }
@@ -146,6 +151,9 @@ fun Viewer(
     var chrome by remember { mutableStateOf(true) }
     var zoomed by remember { mutableStateOf(false) }
     var dismissY by remember { mutableFloatStateOf(0f) }
+    // How the photo on screen is zoomed and panned, so closing can shrink it from there.
+    var zoomScale by remember { mutableFloatStateOf(1f) }
+    var zoomOffset by remember { mutableStateOf(Offset.Zero) }
     var showInfo by remember { mutableStateOf(false) }
 
     // One player for the whole viewer; it follows whichever video is on screen.
@@ -206,11 +214,10 @@ fun Viewer(
         val item = items[pager.currentPage.coerceIn(0, items.lastIndex)]
         // Start from where the photo is now, including any swipe-down in progress.
         val rest = fittedRect(item, rootSize)
-        val shrink = 1f - min(0.3f, dismissY / 3000f)
-        val start = Rect(
-            rest.center.x - rest.width * shrink / 2, rest.center.y + dismissY - rest.height * shrink / 2,
-            rest.center.x + rest.width * shrink / 2, rest.center.y + dismissY + rest.height * shrink / 2,
-        )
+        val shrink = (1f - min(0.3f, dismissY / 3000f)) * zoomScale
+        val cx = rest.center.x + zoomOffset.x
+        val cy = rest.center.y + zoomOffset.y + dismissY
+        val start = Rect(cx - rest.width * shrink / 2, cy - rest.height * shrink / 2, cx + rest.width * shrink / 2, cy + rest.height * shrink / 2)
         showInfo = false
         phase = Phase.CLOSING
         heroItem = item
@@ -276,6 +283,12 @@ fun Viewer(
                 dismissY = if (active) dismissY else 0f,
                 onTap = { chrome = !chrome },
                 onZoomedChange = { if (active) zoomed = it },
+                onTransform = { s, o ->
+                    if (active) {
+                        zoomScale = s
+                        zoomOffset = o
+                    }
+                },
                 onDismissDrag = { dismissY = it },
                 onDismissEnd = { distance ->
                     if (distance > closeDistance) close()
@@ -334,6 +347,7 @@ fun Viewer(
                 onBack = { close() },
                 trailing = {
                     if (current.isVideo) BarIcon(if (muted) AppIcons.Muted else AppIcons.Speaker, if (muted) "Unmute" else "Mute") { muted = !muted }
+                    if (!target.album.isTrash) BarIcon(AppIcons.Ellipsis, "More") { actions.more(listOf(current), target.album) }
                 },
             )
         }
@@ -389,6 +403,7 @@ private fun ZoomablePage(
     dismissY: Float,
     onTap: () -> Unit,
     onZoomedChange: (Boolean) -> Unit,
+    onTransform: (Float, Offset) -> Unit,
     onDismissDrag: (Float) -> Unit,
     onDismissEnd: (Float) -> Unit,
     content: @Composable () -> Unit,
@@ -402,6 +417,9 @@ private fun ZoomablePage(
         if (!active) { scale = 1f; offset = Offset.Zero }
     }
     LaunchedEffect(scale > 1.01f) { onZoomedChange(scale > 1.01f) }
+    LaunchedEffect(active) {
+        if (active) snapshotFlow { scale to offset }.collect { (s, o) -> onTransform(s, o) }
+    }
 
     /** The photo's size on screen at 1×, fitted into the page. */
     fun fitted(): Size {

@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+data class UserAlbumItems(val album: UserAlbum, val items: List<MediaItem>)
+
 /** How much of the library the app may see. */
 enum class Access { NONE, LIMITED, FULL }
 
@@ -29,7 +31,12 @@ data class LibraryState(
     val loaded: Boolean = false,
     /** Oldest first, the way the Library grid reads. */
     val items: List<MediaItem> = emptyList(),
+    /** Recently Deleted. Hidden photos are left out, since it isn't locked. */
     val trash: List<MediaItem> = emptyList(),
+    /** The locked Hidden album; these are left out of [items], so of every other list too. */
+    val hidden: List<MediaItem> = emptyList(),
+    /** The person's own albums, with their (visible) photos in the order they were added. */
+    val userAlbums: List<UserAlbumItems> = emptyList(),
 ) {
     val albums: List<Album> by lazy { Grouping.albums(items) }
     val months: List<MonthGroup> by lazy { Grouping.months(items) }
@@ -48,6 +55,12 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
 
     private val favoriteStore = Favorites(app)
     val favorites: StateFlow<Set<Long>> = favoriteStore.ids
+
+    private val hiddenStore = HiddenPhotos(app)
+    private val albumStore = UserAlbums(app)
+
+    /** What MediaStore last returned, so hiding a photo or editing an album doesn't need a reload. */
+    private var raw: Pair<List<MediaItem>, List<MediaItem>>? = null
 
     private var loadJob: Job? = null
 
@@ -75,8 +88,51 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
                 runCatching { MediaRepository.load(ctx) }.getOrDefault(emptyList()) to
                     runCatching { MediaRepository.loadTrash(ctx) }.getOrDefault(emptyList())
             }
-            _state.value = LibraryState(loaded = true, items = items, trash = trash)
+            raw = items to trash
+            publish()
         }
+    }
+
+    /** Splits the library into what's shown and what's hidden, and fills in the person's albums. */
+    private fun publish() {
+        val (items, trash) = raw ?: return
+        val hiddenIds = hiddenStore.ids.value
+        val (hidden, visible) = items.partition { it.id in hiddenIds }
+        val byId = visible.associateBy { it.id }
+        _state.value = LibraryState(
+            loaded = true,
+            items = visible,
+            trash = trash.filterNot { it.id in hiddenIds },
+            hidden = hidden,
+            userAlbums = albumStore.albums.value.map { album -> UserAlbumItems(album, album.ids.mapNotNull { byId[it] }) },
+        )
+    }
+
+    fun setHidden(items: List<MediaItem>, hidden: Boolean) {
+        hiddenStore.set(items.map { it.id }, hidden)
+        publish()
+    }
+
+    fun createAlbum(name: String): UserAlbum = albumStore.create(name).also { publish() }
+
+    fun renameAlbum(id: String, name: String) {
+        albumStore.rename(id, name)
+        publish()
+    }
+
+    fun deleteAlbum(id: String) {
+        albumStore.delete(id)
+        publish()
+    }
+
+    fun addToAlbum(id: String, items: List<MediaItem>) {
+        albumStore.add(id, items.map { it.id })
+        publish()
+    }
+
+    fun removeFromAlbum(id: String, items: List<MediaItem>) {
+        albumStore.remove(id, items.map { it.id })
+        publish()
     }
 
     fun toggleFavorite(item: MediaItem) = favoriteStore.toggle(item)

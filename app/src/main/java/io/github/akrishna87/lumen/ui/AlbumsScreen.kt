@@ -63,6 +63,8 @@ fun AlbumsScreen(
     onManageAccess: () -> Unit,
     onAlbum: (AlbumRef) -> Unit,
     onSeeAll: () -> Unit,
+    onNewAlbum: () -> Unit,
+    onHidden: () -> Unit,
 ) {
     val apple = LocalApple.current
     val list = rememberLazyListState()
@@ -72,11 +74,14 @@ fun AlbumsScreen(
         listOf(
             Cover(AlbumRef(AlbumRef.RECENTS, "Recents"), state.items.lastOrNull(), state.items.size),
             Cover(AlbumRef(AlbumRef.FAVORITES, "Favorites"), favoriteItems.lastOrNull(), favoriteItems.size),
-        ) + state.albums.map { Cover(AlbumRef.folder(it.folder, it.name), it.cover, it.items.size) }
+        ) + state.userAlbums.map { Cover(AlbumRef.user(it.album.id, it.album.name), it.items.lastOrNull(), it.items.size) } +
+            state.albums.map { Cover(AlbumRef.folder(it.folder, it.name), it.cover, it.items.size) }
     }
 
     Column(Modifier.fillMaxSize().background(apple.background)) {
-        NavBar("Albums", showTitle = scrolled, showBackground = scrolled)
+        NavBar("Albums", showTitle = scrolled, showBackground = scrolled) {
+            BarIcon(AppIcons.Plus, "New Album", onClick = onNewAlbum)
+        }
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp)) {
             item(key = "title") { LargeTitle("Albums") }
             if (access == Access.LIMITED) {
@@ -104,10 +109,12 @@ fun AlbumsScreen(
                 MediaTypeRow(AppIcons.Panorama, "Panoramas", state.panoramas.size) { onAlbum(AlbumRef(AlbumRef.PANORAMAS, "Panoramas")) }
                 MediaTypeRow(AppIcons.Animated, "Animated", state.animated.size, last = true) { onAlbum(AlbumRef(AlbumRef.ANIMATED, "Animated")) }
             }
-            if (Build.VERSION.SDK_INT >= 30) {
-                item(key = "utilities") {
-                    Spacer(Modifier.height(18.dp))
-                    SectionHeader("Utilities")
+            item(key = "utilities") {
+                Spacer(Modifier.height(18.dp))
+                SectionHeader("Utilities")
+                // No count on Hidden, as in Photos: even how many are hidden stays behind the lock.
+                AppleRow(title = "Hidden", icon = AppIcons.EyeSlash, value = null, showDivider = Build.VERSION.SDK_INT >= 30, onClick = onHidden)
+                if (Build.VERSION.SDK_INT >= 30) {
                     MediaTypeRow(AppIcons.Trash, "Recently Deleted", state.trash.size, last = true) { onAlbum(AlbumRef(AlbumRef.TRASH, "Recently Deleted")) }
                 }
             }
@@ -204,6 +211,10 @@ fun AlbumScreen(
 ) {
     val apple = LocalApple.current
     val items = remember(state, favorites, album) { album.items(state, favorites) }
+    val title = album.currentTitle(state)
+    // One of the person's albums was deleted (from its own ••• menu): go back.
+    val gone = album.userAlbumId != null && state.userAlbums.none { it.album.id == album.userAlbumId }
+    LaunchedEffect(gone) { if (gone) onBack() }
     val grid = rememberLazyGridState()
     val scrolled by remember { derivedStateOf { grid.firstVisibleItemIndex > 0 || grid.firstVisibleItemScrollOffset > 60 } }
     var columns by rememberSaveable { mutableIntStateOf(3) }
@@ -212,7 +223,9 @@ fun AlbumScreen(
     LaunchedEffect(items.isNotEmpty()) { if (items.isNotEmpty() && !album.isTrash) grid.scrollToItem(items.size + 1) }
 
     Column(Modifier.fillMaxSize().background(apple.background)) {
-        NavBar(album.title, showTitle = scrolled, showBackground = scrolled, backLabel = backLabel, onBack = { selection.end(); onBack() }) {
+        NavBar(title, showTitle = scrolled, showBackground = scrolled, backLabel = backLabel, onBack = { selection.end(); onBack() }) {
+            val userAlbum = album.userAlbumId
+            if (userAlbum != null && !selection.active) BarIcon(AppIcons.Ellipsis, "Album Options") { actions.albumOptions(userAlbum, title) }
             if (items.isNotEmpty()) {
                 CapsuleButton(if (selection.active) "Cancel" else "Select", overMedia = false, modifier = Modifier.padding(end = 4.dp)) {
                     if (selection.active) selection.end() else selection.start()
@@ -220,10 +233,12 @@ fun AlbumScreen(
             }
         }
         if (state.loaded && items.isEmpty()) {
-            LargeTitle(album.title)
-            when (album.key) {
-                AlbumRef.FAVORITES -> EmptyState(AppIcons.Heart, "No Favorites", "Tap the heart on photos and videos you love to add them here.")
-                AlbumRef.TRASH -> EmptyState(AppIcons.Trash, "No Recently Deleted Items", "Deleted photos and videos stay here for 30 days before they're removed for good.")
+            LargeTitle(title)
+            when {
+                album.isHidden -> EmptyState(AppIcons.EyeSlash, "No Hidden Items", "Photos and videos you hide stay out of Lumen's Library and albums, and appear only here. Other apps still show them.")
+                album.userAlbumId != null -> EmptyState(AppIcons.Albums, "No Photos or Videos", "To add some, tap Select in the Library, pick photos, then tap \u2022\u2022\u2022 and Add to Album.")
+                album.key == AlbumRef.FAVORITES -> EmptyState(AppIcons.Heart, "No Favorites", "Tap the heart on photos and videos you love to add them here.")
+                album.isTrash -> EmptyState(AppIcons.Trash, "No Recently Deleted Items", "Deleted photos and videos stay here for 30 days before they're removed for good.")
                 else -> EmptyState(AppIcons.Photo, "No Photos or Videos", "Photos and videos in this album will appear here.")
             }
             return@Column
@@ -243,7 +258,7 @@ fun AlbumScreen(
             header = {
                 item(key = "__title", span = { GridItemSpan(maxLineSpan) }) {
                     Column {
-                        LargeTitle(album.title, subtitle = if (album.isTrash) null else Format.counts(items.count { !it.isVideo }, items.count { it.isVideo }))
+                        LargeTitle(title, subtitle = if (album.isTrash) null else Format.counts(items.count { !it.isVideo }, items.count { it.isVideo }))
                         if (album.isTrash) {
                             Text(
                                 "Photos and videos show the days remaining before deletion. After that time, items will be permanently deleted.",

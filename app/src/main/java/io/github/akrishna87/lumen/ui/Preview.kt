@@ -51,6 +51,8 @@ import kotlin.math.min
 @Composable
 fun PreviewOverlay(
     item: MediaItem,
+    /** Where it was pressed: in Hidden, the menu offers Unhide. */
+    album: AlbumRef,
     favorite: Boolean,
     actions: GalleryActions,
     onOpen: () -> Unit,
@@ -116,6 +118,14 @@ fun PreviewOverlay(
                 MenuRow(if (favorite) "Unfavorite" else "Favorite", if (favorite) AppIcons.HeartFill else AppIcons.Heart) {
                     actions.toggleFavorite(item)
                     onDismiss()
+                }
+                MenuDivider()
+                MenuRow("Add to Album", AppIcons.Albums) { actions.picking = listOf(item); onDismiss() }
+                MenuDivider()
+                if (album.isHidden) {
+                    MenuRow("Unhide", AppIcons.EyeSlash) { actions.setHidden(listOf(item), false); onDismiss() }
+                } else {
+                    MenuRow("Hide", AppIcons.EyeSlash) { actions.setHidden(listOf(item), true); onDismiss() }
                 }
                 // A thicker gap sets the destructive action apart, as iOS menus do.
                 Box(Modifier.fillMaxWidth().height(8.dp).background(apple.separator.copy(alpha = 0.15f)))

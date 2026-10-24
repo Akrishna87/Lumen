@@ -2,7 +2,7 @@
 # Runs inside the Android emulator job: installs the APK, puts test photos and a video on the
 # "phone", and checks the welcome screen, the Library (All Photos, Months, Years), the viewer
 # (favourite, info, video playback, deleting), press-and-hold previews, drag-selecting, Albums,
-# Search and dark mode.
+# your own albums, hiding (and the Hidden album's lock), Search and dark mode.
 # Usage: smoke-test.sh <apk> <media dir> <output dir>
 set -euo pipefail
 
@@ -245,6 +245,103 @@ sleep 2
 shot 13-dark-library
 adb shell cmd uimode night no || true
 
+echo "--- Your own albums"
+sleep 2
+dump library
+tap library "Albums"
+sleep 2
+dump albums
+tap albums "New Album"
+sleep 2
+adb shell input text Trip
+sleep 1
+dump naming
+shot 16-new-album
+tap naming "Save"
+sleep 2
+dump albums
+has albums '"Trip' || fail "the new album isn't in My Albums"
+tap albums "Library"
+sleep 2
+dump library
+tap library "Select"
+sleep 1
+dump select
+tap select "Photo, " last
+sleep 1
+dump select
+tap select "More"
+sleep 2
+dump more
+tap more "Add to Album"
+sleep 2
+dump picker
+shot 17-add-to-album
+tap picker "Trip"
+sleep 2
+dump library
+tap library "Albums"
+sleep 2
+dump albums
+tap albums "Trip"
+sleep 2
+dump trip
+shot 18-trip
+has trip 'text="1 Photo"' || fail "the photo added to Trip isn't in the album"
+tap trip "Back"
+sleep 1
+echo "PASS: making an album and adding a photo to it"
+
+echo "--- Hiding"
+dump albums
+tap albums "Library"
+sleep 2
+dump library
+tap library "Select"
+sleep 1
+dump select
+tap select "Photo, " last
+sleep 1
+dump select
+tap select "More"
+sleep 2
+dump more
+tap more "Hide"
+sleep 2
+dump library
+has library '10 Photos, 1 Video' || fail "hiding a photo didn't take it out of the Library"
+tap library "Albums"
+sleep 2
+adb shell input swipe 540 1700 540 500 300 # down to Utilities
+sleep 1
+dump albums
+tap albums "Hidden"
+sleep 2
+dump hidden
+shot 19-hidden
+has hidden 'content-desc="Photo, ' || fail "the Hidden album doesn't show the hidden photo"
+tap hidden "Select"
+sleep 1
+dump hidden
+tap hidden "Photo, "
+sleep 1
+dump hidden
+tap hidden "More"
+sleep 2
+dump more
+tap more "Unhide"
+sleep 2
+dump hidden
+has hidden 'text="No Hidden Items"' || fail "unhiding didn't take the photo out of Hidden"
+tap hidden "Back"
+sleep 1
+dump albums
+tap albums "Library"
+sleep 2
+dump library
+has library '11 Photos, 1 Video' || fail "an unhidden photo didn't come back to the Library"
+echo "PASS: hiding takes a photo out of the Library into Hidden, and unhiding brings it back"
+
 echo "--- Deleting from the viewer"
 sleep 2
 dump library
@@ -279,6 +376,37 @@ sleep 2
 dump library
 has library '10 Photos, 1 Video' || fail "the Library still counts the deleted photo"
 echo "PASS: deleting moves on to the next photo and leaves the library"
+
+echo "--- With a screen lock, Hidden asks for it"
+dump library
+tap library "Select"
+sleep 1
+dump select
+tap select "Photo, " last
+sleep 1
+dump select
+tap select "More"
+sleep 2
+dump more
+tap more "Hide"
+sleep 2
+adb shell locksettings set-pin 1111
+sleep 1
+dump library
+tap library "Albums"
+sleep 2
+adb shell input swipe 540 1700 540 500 300
+sleep 1
+dump albums
+tap albums "Hidden"
+sleep 3
+dump locked
+shot 20-hidden-locked
+has locked 'content-desc="Photo, ' && fail "Hidden showed its photos without asking for the screen lock"
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+adb shell locksettings clear --old 1111 || true
+echo "PASS: with a screen lock set, Hidden doesn't open without it"
 
 if crashed; then
   adb logcat -d > "$OUT/logcat.txt"
