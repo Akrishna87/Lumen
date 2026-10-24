@@ -1,5 +1,6 @@
 package io.github.akrishna87.lumen.ui
 
+import android.app.Activity
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -35,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -49,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -62,6 +65,31 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.view.WindowCompat
+
+/**
+ * While [enabled], the status and navigation bar icons are white, for screens that are black (or
+ * show a photo) even in light mode: the editor, the slideshow, the viewer with its bars hidden.
+ * They go back to how they were afterwards.
+ */
+@Composable
+fun LightBarIcons(enabled: Boolean = true) {
+    val view = LocalView.current
+    DisposableEffect(view, enabled) {
+        val window = (view.context as? Activity)?.window
+        val bars = if (enabled) window?.let { WindowCompat.getInsetsController(it, view) } else null
+        val lightStatus = bars?.isAppearanceLightStatusBars
+        val lightNavigation = bars?.isAppearanceLightNavigationBars
+        bars?.isAppearanceLightStatusBars = false
+        bars?.isAppearanceLightNavigationBars = false
+        onDispose {
+            if (bars != null && lightStatus != null && lightNavigation != null) {
+                bars.isAppearanceLightStatusBars = lightStatus
+                bars.isAppearanceLightNavigationBars = lightNavigation
+            }
+        }
+    }
+}
 
 /** Plain clickable with no ripple: iOS controls dim instead of rippling. */
 @Composable
