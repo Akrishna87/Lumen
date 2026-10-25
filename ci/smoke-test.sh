@@ -711,10 +711,21 @@ sleep 8
 dump live
 shot 33-live-text
 has live 'content-desc="[^"]*receipt' || fail "Live Text didn't outline the photo's text"
-tap live "Copy All"
+# Pick one line: it's shown, and Copy copies just that.
+tap live "receipt"
+sleep 1
+dump picked
+shot 34-live-text-picked
+has picked 'text="Copy 1 Line"' || fail "picking a Live Text line didn't offer to copy just it"
+has picked 'text="[^"]*receipt' || fail "the picked line isn't shown before copying"
+tap picked "Copy 1 Line"
 dump copied # straight away: the note shows for 2.5 s
+has copied 'text="Copied"' || fail "Copy didn't copy the picked line"
+has copied 'text="Copy All"' || fail "after copying, the picked lines weren't cleared"
+tap copied "Copy All"
+dump copied
 has copied 'text="Copied"' || fail "Copy All didn't copy the text"
-echo "PASS: search finds words inside photos, and Live Text outlines and copies them"
+echo "PASS: search finds words inside photos, and Live Text outlines them and copies picked lines or all"
 
 if crashed; then
   adb logcat -d > "$OUT/logcat.txt"
