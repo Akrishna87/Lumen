@@ -102,7 +102,10 @@ and keeps your favourites.
 - **Live Text**: on a photo with text, the text button in the viewer outlines each
   line. Tap the lines you want (tap again to unpick); they're shown at the bottom, and
   **Copy** copies just those. With none picked, **Copy All** copies everything. Works best on screenshots and
-  documents; text in ordinary photos (signs, handwriting) is hit and miss.
+  documents; text in ordinary photos (signs, handwriting) is hit and miss. Text on a
+  slant (a label photographed at an angle) is straightened before it's read, for both
+  Live Text and Search; text photographed from a steep angle (wider at one end) isn't
+  corrected.
 - **Limited access** (Android 14+): if you let Lumen see only some photos, Albums
   says so and **Manage…** lets you change the selection.
 - Light and dark mode follow the phone's setting.

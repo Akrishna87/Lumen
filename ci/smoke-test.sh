@@ -727,6 +727,37 @@ dump copied
 has copied 'text="Copied"' || fail "Copy All didn't copy the text"
 echo "PASS: search finds words inside photos, and Live Text outlines them and copies picked lines or all"
 
+echo "--- Slanted text"
+sleep 3
+dump viewer
+tap viewer "Live Text" # off
+sleep 1
+adb shell input keyevent KEYCODE_BACK # out of the viewer, back to Search
+sleep 2
+dump search
+if has search 'content-desc="Clear text"'; then tap search "Clear text"; sleep 1; dump search; fi
+tap search "Albums, Months, Files and More"
+sleep 1
+adb shell input text sunflower
+sleep 1
+adb shell input keyevent KEYCODE_BACK # hide the keyboard
+for _ in $(seq 1 20); do
+  sleep 3
+  dump search
+  has search '[0-9] Result' && break
+done
+shot 35-slanted-search
+has search 'text="1 Result"' || fail "searching 'sunflower' didn't find the photo with that word written on a slant"
+tap search "Photo, "
+sleep 3
+dump viewer
+tap viewer "Live Text"
+sleep 8
+dump live
+shot 36-slanted-live-text
+has live 'content-desc="[^"]*sunflower' || fail "Live Text didn't find the slanted text"
+echo "PASS: text written on a slant is straightened, found by search and outlined by Live Text"
+
 if crashed; then
   adb logcat -d > "$OUT/logcat.txt"
   fail "the app crashed (see logcat.txt)"

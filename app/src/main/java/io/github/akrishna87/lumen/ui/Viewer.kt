@@ -361,6 +361,7 @@ fun Viewer(
                     Box(
                         Modifier.offset { IntOffset((photo.left + box.left * scale).roundToInt() - 4, (photo.top + box.top * scale).roundToInt() - 4) }
                             .size(with(density) { (box.width() * scale + 8).toDp() }, with(density) { (box.height() * scale + 8).toDp() })
+                            .graphicsLayer { rotationZ = line.tilt } // along slanted text
                             .clip(RoundedCornerShape(5.dp)).background(if (on) apple.tint.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.28f))
                             .border(if (on) 2.dp else 1.dp, if (on) apple.tint else Color.White, RoundedCornerShape(5.dp))
                             .tap { picked = if (on) picked - i else picked + i }
