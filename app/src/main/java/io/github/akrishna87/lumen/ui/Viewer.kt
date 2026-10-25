@@ -374,7 +374,16 @@ fun Viewer(
                 Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 140.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (chosen.isNotEmpty()) {
+                if (chosen.isEmpty()) {
+                    // Picking isn't obvious from the outlines alone.
+                    Text(
+                        "Tap text to pick the lines to copy",
+                        style = AppleType.footnote.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 10.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f))
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                    )
+                } else {
                     // What will be copied, so a line read wrongly can be seen before pasting it.
                     Text(
                         chosen.joinToString("\n") { it.text },

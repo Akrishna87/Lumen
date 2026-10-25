@@ -712,6 +712,7 @@ sleep 8
 dump live
 shot 33-live-text
 has live 'content-desc="[^"]*receipt' || fail "Live Text didn't outline the photo's text"
+has live 'text="Tap text to pick the lines to copy"' || fail "Live Text doesn't say lines can be picked"
 # Pick one line: it's shown, and Copy copies just that.
 tap live "receipt"
 sleep 1
