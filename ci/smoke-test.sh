@@ -683,6 +683,7 @@ echo "PASS: Duplicates finds an identical copy, and merging keeps one"
 echo "--- Text in photos"
 adb shell mkdir -p /sdcard/Pictures/Notes
 adb push "$MEDIA/later/Note.png" /sdcard/Pictures/Notes/ > /dev/null
+adb push "$MEDIA/later/Label.png" /sdcard/Pictures/Notes/ > /dev/null # read later, in "Slanted text"
 adb shell content call --uri content://media --method scan_volume --arg external_primary > /dev/null 2>&1 || true
 sleep 3
 dump nav
