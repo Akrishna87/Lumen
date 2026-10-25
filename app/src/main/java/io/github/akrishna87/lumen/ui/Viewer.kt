@@ -79,7 +79,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
@@ -166,6 +168,8 @@ fun Viewer(
     var liveText by remember { mutableStateOf<Pair<List<TextLine>, android.util.Size>?>(null) }
     var readingText by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
+    // The Live Text lines picked for copying (indexes into the lines), in the order they're on the photo.
+    var picked by remember { mutableStateOf(emptySet<Int>()) }
 
     // One player for the whole viewer; it follows whichever video is on screen.
     val player = remember { ExoPlayer.Builder(context).build() }
@@ -185,6 +189,7 @@ fun Viewer(
     }
     LaunchedEffect(current.id) {
         liveText = null
+        picked = emptySet()
         onCurrentChange(current.id)
         firstFrame = false
         if (current.isVideo) {
@@ -344,30 +349,54 @@ fun Viewer(
             }
         }
 
-        // Live Text: the text Lumen found in this photo, outlined; tap a line to copy it.
+        // Live Text: the text Lumen found in this photo, outlined. Tap lines to pick them, then
+        // Copy copies just those; with none picked, Copy All copies everything.
         liveText?.let { (lines, size) ->
             val photo = fittedRect(current, rootSize)
             val scale = photo.width / size.width
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)).tap { liveText = null }) {
-                lines.forEach { line ->
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)).tap { liveText = null; picked = emptySet() }) {
+                lines.forEachIndexed { i, line ->
                     val box = line.box
+                    val on = i in picked
                     Box(
                         Modifier.offset { IntOffset((photo.left + box.left * scale).roundToInt() - 4, (photo.top + box.top * scale).roundToInt() - 4) }
                             .size(with(density) { (box.width() * scale + 8).toDp() }, with(density) { (box.height() * scale + 8).toDp() })
-                            .clip(RoundedCornerShape(5.dp)).background(Color.White.copy(alpha = 0.28f))
-                            .border(1.dp, Color.White, RoundedCornerShape(5.dp))
-                            .tap { copyText(context, line.text); copied = true }
-                            .semantics { contentDescription = line.text },
+                            .graphicsLayer { rotationZ = line.tilt } // along slanted text
+                            .clip(RoundedCornerShape(5.dp)).background(if (on) apple.tint.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.28f))
+                            .border(if (on) 2.dp else 1.dp, if (on) apple.tint else Color.White, RoundedCornerShape(5.dp))
+                            .tap { picked = if (on) picked - i else picked + i }
+                            .semantics { contentDescription = line.text; selected = on },
                     )
                 }
             }
-            CapsuleButton(
-                "Copy All",
-                overMedia = true,
-                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 140.dp),
+            val chosen = lines.filterIndexed { i, _ -> i in picked }
+            Column(
+                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 140.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                copyText(context, lines.joinToString("\n") { it.text })
-                copied = true
+                if (chosen.isNotEmpty()) {
+                    // What will be copied, so a line read wrongly can be seen before pasting it.
+                    Text(
+                        chosen.joinToString("\n") { it.text },
+                        style = AppleType.subheadline,
+                        color = Color.White,
+                        maxLines = 5,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(bottom = 10.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.7f))
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (chosen.isNotEmpty()) {
+                        CapsuleButton("Clear", overMedia = true) { picked = emptySet() }
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    CapsuleButton(if (chosen.isEmpty()) "Copy All" else "Copy " + Format.plural(chosen.size, "Line"), overMedia = true) {
+                        copyText(context, (chosen.ifEmpty { lines }).joinToString("\n") { it.text })
+                        picked = emptySet()
+                        copied = true
+                    }
+                }
             }
         }
         if (copied) {
@@ -390,7 +419,7 @@ fun Viewer(
                 Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 12.dp).size(40.dp).clip(CircleShape)
                     .background(if (liveText != null) apple.tint else Color.Black.copy(alpha = 0.45f))
                     .tap {
-                        if (liveText != null) liveText = null
+                        if (liveText != null) { liveText = null; picked = emptySet() }
                         else if (!readingText) {
                             readingText = true
                             val item = current

@@ -683,6 +683,7 @@ echo "PASS: Duplicates finds an identical copy, and merging keeps one"
 echo "--- Text in photos"
 adb shell mkdir -p /sdcard/Pictures/Notes
 adb push "$MEDIA/later/Note.png" /sdcard/Pictures/Notes/ > /dev/null
+adb push "$MEDIA/later/Label.png" /sdcard/Pictures/Notes/ > /dev/null # read later, in "Slanted text"
 adb shell content call --uri content://media --method scan_volume --arg external_primary > /dev/null 2>&1 || true
 sleep 3
 dump nav
@@ -711,10 +712,52 @@ sleep 8
 dump live
 shot 33-live-text
 has live 'content-desc="[^"]*receipt' || fail "Live Text didn't outline the photo's text"
-tap live "Copy All"
+# Pick one line: it's shown, and Copy copies just that.
+tap live "receipt"
+sleep 1
+dump picked
+shot 34-live-text-picked
+has picked 'text="Copy 1 Line"' || fail "picking a Live Text line didn't offer to copy just it"
+has picked 'text="[^"]*receipt' || fail "the picked line isn't shown before copying"
+tap picked "Copy 1 Line"
 dump copied # straight away: the note shows for 2.5 s
+has copied 'text="Copied"' || fail "Copy didn't copy the picked line"
+has copied 'text="Copy All"' || fail "after copying, the picked lines weren't cleared"
+tap copied "Copy All"
+dump copied
 has copied 'text="Copied"' || fail "Copy All didn't copy the text"
-echo "PASS: search finds words inside photos, and Live Text outlines and copies them"
+echo "PASS: search finds words inside photos, and Live Text outlines them and copies picked lines or all"
+
+echo "--- Slanted text"
+sleep 3
+dump viewer
+tap viewer "Live Text" # off
+sleep 1
+adb shell input keyevent KEYCODE_BACK # out of the viewer, back to Search
+sleep 2
+dump search
+if has search 'content-desc="Clear text"'; then tap search "Clear text"; sleep 1; dump search; fi
+tap search "Albums, Months, Files and More"
+sleep 1
+adb shell input text sunflower
+sleep 1
+adb shell input keyevent KEYCODE_BACK # hide the keyboard
+for _ in $(seq 1 20); do
+  sleep 3
+  dump search
+  has search '[0-9] Result' && break
+done
+shot 35-slanted-search
+has search 'text="1 Result"' || fail "searching 'sunflower' didn't find the photo with that word written on a slant"
+tap search "Photo, "
+sleep 3
+dump viewer
+tap viewer "Live Text"
+sleep 8
+dump live
+shot 36-slanted-live-text
+has live 'content-desc="[^"]*sunflower' || fail "Live Text didn't find the slanted text"
+echo "PASS: text written on a slant is straightened, found by search and outlined by Live Text"
 
 if crashed; then
   adb logcat -d > "$OUT/logcat.txt"

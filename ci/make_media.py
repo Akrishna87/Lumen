@@ -95,5 +95,12 @@ font = ImageFont.load_default(size=120)
 pen.text((100, 220), "LUMEN RECEIPT", fill="black", font=font)
 pen.text((100, 520), "TOTAL 42.00", fill="black", font=font)
 note.save(os.path.join(out, "later", "Note.png"))
+# The same kind of photo with its text slanted, like a label photographed at an angle: Lumen
+# straightens it before reading.
+label = Image.new("RGB", (1600, 1000), "white")
+pen = ImageDraw.Draw(label)
+pen.text((100, 220), "WIFI PASSWORD", fill="black", font=font)
+pen.text((100, 520), "SUNFLOWER GARDEN", fill="black", font=font)
+label.rotate(12, expand=True, fillcolor="white", resample=Image.BICUBIC).save(os.path.join(out, "later", "Label.png"))
 
 print("made test photos in", out)
