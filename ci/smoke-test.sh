@@ -712,6 +712,7 @@ sleep 8
 dump live
 shot 33-live-text
 has live 'content-desc="[^"]*receipt' || fail "Live Text didn't outline the photo's text"
+has live 'text="Tap text to pick the lines to copy"' || fail "Live Text doesn't say lines can be picked"
 # Pick one line: it's shown, and Copy copies just that.
 tap live "receipt"
 sleep 1
@@ -721,7 +722,9 @@ has picked 'text="Copy 1 Line"' || fail "picking a Live Text line didn't offer t
 has picked 'text="[^"]*receipt' || fail "the picked line isn't shown before copying"
 tap picked "Copy 1 Line"
 dump copied # straight away: the note shows for 2.5 s
-has copied 'text="Copied"' || fail "Copy didn't copy the picked line"
+# Copy unpicks the lines in the same tap that copies, so "Copy All" coming back shows it ran even
+# when reading the screen took longer than the 2.5 s "Copied" note.
+has copied 'text="Copy 1 Line"' && fail "Copy didn't copy the picked line"
 has copied 'text="Copy All"' || fail "after copying, the picked lines weren't cleared"
 tap copied "Copy All"
 dump copied
